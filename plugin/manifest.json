@@ -1,0 +1,815 @@
+{
+  "$schema": "../sdk/community-plugin-manifest.schema.json",
+  "id": "catopanda-subathon",
+  "name": "CatOPanda Subathon",
+  "version": "0.4.1",
+  "packageId": "io.github.osc-flow-studio.catopanda-subathon",
+  "engines": { "oscFlowStudio": ">=0.5.0 <0.6.0" },
+  "author": { "name": "DerekWolfie", "url": "https://github.com/DerekWolfie" },
+  "repository": "https://github.com/DerekWolfie/catopanda-subathon",
+  "homepage": "https://github.com/DerekWolfie/catopanda-subathon#readme",
+  "changelogUrl": "https://github.com/DerekWolfie/catopanda-subathon/releases",
+  "description": "Cronômetro, metas e overlays OBS do subathon. Recebe Donate, Bits e Subs de qualquer gatilho por fórmula; templates prontos para Twitch e LivePix.",
+  "capabilities": ["triggers", "actions", "templates", "secrets", "local-http"],
+  "entry": "index.mjs",
+  "apiVersion": 1,
+  "configSchema": {
+    "tabs": [
+      { "id": "general", "label": "Geral", "description": "Ativação e servidor local dos overlays." },
+      { "id": "timer", "label": "Cronômetro", "description": "Tempo inicial, conversões e avisos de reta final." },
+      { "id": "goals", "label": "Metas", "description": "Marcos de Donate, Subs e Bits exibidos nos overlays." },
+      { "id": "overlays", "label": "Overlays", "description": "Transparência, escala e efeitos das Browser Sources." },
+      { "id": "identity", "label": "Identidade", "description": "Tipografia, paleta e textos do Palco CatOPanda." }
+    ],
+    "fields": [
+      {
+        "key": "enabled",
+        "type": "boolean",
+        "label": "Plugin ativado",
+        "description": "Inicia o cronômetro e o servidor local junto com o OSC Flow Studio.",
+        "default": true,
+        "tab": "general"
+      },
+      {
+        "key": "serverSection",
+        "type": "separator",
+        "label": "Servidor dos overlays",
+        "description": "As Browser Sources do OBS acessam somente este servidor local, em 127.0.0.1.",
+        "tab": "general"
+      },
+      {
+        "key": "port",
+        "type": "number",
+        "label": "Porta local",
+        "description": "Use a mesma porta nas URLs configuradas no OBS. Salvar reinicia o servidor na porta nova.",
+        "default": 8798,
+        "min": 1024,
+        "max": 65535,
+        "tab": "general"
+      },
+      {
+        "key": "initialTimerSeconds",
+        "type": "number",
+        "label": "Tempo inicial (segundos)",
+        "description": "Valor restaurado pela operação Restaurar valor inicial. 259200 = 72 horas.",
+        "default": 259200,
+        "min": 0,
+        "max": 31536000,
+        "tab": "timer"
+      },
+      {
+        "key": "donateSection",
+        "type": "separator",
+        "label": "Donate",
+        "description": "Conversão aplicada a cada valor recebido por LivePix, ação manual ou qualquer outro gatilho.",
+        "tab": "timer"
+      },
+      {
+        "key": "donateSecondsPerReal",
+        "type": "number",
+        "label": "Segundos por R$ 1",
+        "default": 60,
+        "min": 0,
+        "max": 86400,
+        "tab": "timer"
+      },
+      {
+        "key": "bitsSection",
+        "type": "separator",
+        "label": "Bits",
+        "description": "Defina o tamanho da unidade e o tempo concedido por unidade. Frações contam proporcionalmente.",
+        "tab": "timer"
+      },
+      {
+        "key": "bitsPerUnit",
+        "type": "number",
+        "label": "Bits por unidade",
+        "default": 100,
+        "min": 1,
+        "max": 1000000,
+        "tab": "timer"
+      },
+      {
+        "key": "bitsSecondsPerUnit",
+        "type": "number",
+        "label": "Segundos por unidade",
+        "default": 60,
+        "min": 0,
+        "max": 86400,
+        "tab": "timer"
+      },
+      {
+        "key": "subsSection",
+        "type": "separator",
+        "label": "Inscrições Twitch",
+        "description": "Tempo acrescentado por Sub, Resub ou Sub presenteado em cada tier.",
+        "tab": "timer"
+      },
+      {
+        "key": "subTier1Seconds",
+        "type": "number",
+        "label": "Segundos por Sub Tier 1",
+        "default": 600,
+        "min": 0,
+        "max": 604800,
+        "tab": "timer"
+      },
+      {
+        "key": "subTier2Seconds",
+        "type": "number",
+        "label": "Segundos por Sub Tier 2",
+        "default": 1200,
+        "min": 0,
+        "max": 604800,
+        "tab": "timer"
+      },
+      {
+        "key": "subTier3Seconds",
+        "type": "number",
+        "label": "Segundos por Sub Tier 3",
+        "default": 3000,
+        "min": 0,
+        "max": 604800,
+        "tab": "timer"
+      },
+      {
+        "key": "subPrimeSeconds",
+        "type": "number",
+        "label": "Segundos por Sub Prime",
+        "description": "A Twitch entrega Prime como Tier 1 no EventSub, então o template automático conta Prime como Tier 1. Este valor vale quando o tier Prime é escolhido no bloco ou vem por fórmula.",
+        "default": 600,
+        "min": 0,
+        "max": 604800,
+        "tab": "timer"
+      },
+      {
+        "key": "warningsSection",
+        "type": "separator",
+        "label": "Avisos de reta final",
+        "description": "O gatilho Cronômetro abaixo de dispara uma vez a cada marco. Se o tempo subir de novo, o marco volta a valer.",
+        "tab": "timer"
+      },
+      {
+        "key": "warningThresholds",
+        "type": "list",
+        "label": "Marcos (segundos)",
+        "itemType": "number",
+        "min": 1,
+        "max": 31536000,
+        "maxItems": 12,
+        "default": [3600, 900, 300, 60],
+        "tab": "timer"
+      },
+      {
+        "key": "goalsSection",
+        "type": "separator",
+        "label": "Roteiro de metas",
+        "description": "A ordem numérica controla a sequência exibida nos overlays.",
+        "tab": "goals"
+      },
+      {
+        "key": "goals",
+        "type": "table",
+        "label": "Metas do subathon",
+        "description": "Donate usa centavos (R$ 300 = 30000); Subs e Bits usam quantidade.",
+        "tab": "goals",
+        "maxItems": 50,
+        "default": [
+          { "id": "donate-100", "type": "donate", "title": "Chat escolhe o outfit", "target": 10000, "order": 1 },
+          { "id": "donate-150", "type": "donate", "title": "Cantar uma música", "target": 15000, "order": 2 },
+          { "id": "donate-200", "type": "donate", "title": "Jogar terror sem luz", "target": 20000, "order": 3 },
+          { "id": "donate-300", "type": "donate", "title": "Cosplay surpresa", "target": 30000, "order": 4 },
+          { "id": "subs-50", "type": "subs", "title": "Karaokê com o chat", "target": 50, "order": 5 },
+          { "id": "bits-10000", "type": "bits", "title": "Desafio escolhido ao vivo", "target": 10000, "order": 6 }
+        ],
+        "itemFields": [
+          { "key": "id", "type": "string", "label": "ID", "required": true, "pattern": "^[a-z0-9][a-z0-9-]{0,79}$" },
+          {
+            "key": "type",
+            "type": "select",
+            "label": "Tipo",
+            "required": true,
+            "default": "donate",
+            "options": [
+              { "value": "donate", "label": "Donate" },
+              { "value": "subs", "label": "Subs" },
+              { "value": "bits", "label": "Bits" }
+            ]
+          },
+          { "key": "title", "type": "string", "label": "Título", "required": true, "pattern": "^.{1,160}$" },
+          { "key": "target", "type": "number", "label": "Alvo", "required": true, "min": 1, "max": 9007199254740991, "default": 100 },
+          { "key": "order", "type": "number", "label": "Ordem", "required": true, "min": 1, "max": 500, "default": 1 }
+        ]
+      },
+      {
+        "key": "goalsDisplaySection",
+        "type": "separator",
+        "label": "Exibição",
+        "description": "Controle a densidade do Totem editorial sem alterar a lista completa.",
+        "tab": "goals"
+      },
+      {
+        "key": "maxTotemGoals",
+        "type": "number",
+        "label": "Metas visíveis no Totem",
+        "default": 3,
+        "min": 1,
+        "max": 8,
+        "tab": "goals"
+      },
+      {
+        "key": "backgroundsSection",
+        "type": "separator",
+        "label": "Fundos",
+        "description": "A transparência pode ser sobrescrita por URL com ?transparent=1 ou ?transparent=0.",
+        "tab": "overlays"
+      },
+      { "key": "brbTransparent", "type": "boolean", "label": "Palco CatOPanda transparente", "default": false, "tab": "overlays" },
+      { "key": "goalsTransparent", "type": "boolean", "label": "Overlays de metas transparentes", "default": true, "tab": "overlays" },
+      { "key": "progressTransparent", "type": "boolean", "label": "Barras de progresso transparentes", "default": true, "tab": "overlays" },
+      { "key": "timerTransparent", "type": "boolean", "label": "Cronômetro transparente", "default": true, "tab": "overlays" },
+      {
+        "key": "scaleSection",
+        "type": "separator",
+        "label": "Dimensionamento",
+        "description": "A escala por URL continua disponível com ?scale=0.85.",
+        "tab": "overlays"
+      },
+      { "key": "overlayScale", "type": "number", "label": "Escala global", "default": 1, "min": 0.5, "max": 2, "tab": "overlays" },
+      {
+        "key": "effectsSection",
+        "type": "separator",
+        "label": "Efeitos",
+        "description": "Brilho e movimento nos overlays; avisos, faixas e confete ficam no overlay Alertas (/overlay/alerts). Tudo respeita prefers-reduced-motion.",
+        "tab": "overlays"
+      },
+      {
+        "key": "effectsEnabled",
+        "type": "boolean",
+        "label": "Brilho e movimento",
+        "description": "Halo pulsante nos cartões, barras com rastro de luz e mascote flutuando.",
+        "default": true,
+        "tab": "overlays"
+      },
+      {
+        "key": "celebrateGoals",
+        "type": "boolean",
+        "label": "Confete ao concluir meta",
+        "description": "Chuva de confete nas cores da paleta e faixa com o nome da meta no overlay Alertas; o cartão da meta ganha destaque nos outros overlays.",
+        "default": true,
+        "tab": "overlays"
+      },
+      {
+        "key": "celebrateContributions",
+        "type": "boolean",
+        "label": "Aviso de tempo adicionado",
+        "description": "Mostra +hh:mm:ss e o nome do apoiador no overlay Alertas a cada contribuição.",
+        "default": true,
+        "tab": "overlays"
+      },
+      {
+        "key": "alertsPosition",
+        "type": "select",
+        "label": "Posição dos avisos no overlay Alertas",
+        "description": "Onde os avisos de tempo adicionado aparecem em /overlay/alerts. Por URL: ?position=bottom-left.",
+        "default": "top-right",
+        "options": [
+          { "value": "top-right", "label": "Canto superior direito" },
+          { "value": "top-left", "label": "Canto superior esquerdo" },
+          { "value": "top-center", "label": "Topo, centralizado" },
+          { "value": "bottom-right", "label": "Canto inferior direito" },
+          { "value": "bottom-left", "label": "Canto inferior esquerdo" },
+          { "value": "bottom-center", "label": "Base, centralizado" }
+        ],
+        "tab": "overlays"
+      },
+      {
+        "key": "celebrationSeconds",
+        "type": "number",
+        "label": "Duração das celebrações (segundos)",
+        "default": 6,
+        "min": 2,
+        "max": 30,
+        "tab": "overlays"
+      },
+      {
+        "key": "typographySection",
+        "type": "separator",
+        "label": "Tipografia",
+        "description": "A fonte aceita stylesheet web, arquivo remoto ou caminho absoluto local (.woff, .woff2, .ttf, .otf).",
+        "tab": "identity"
+      },
+      { "key": "fontFamily", "type": "string", "label": "Nome da família", "default": "Fredoka", "tab": "identity" },
+      {
+        "key": "fontSource",
+        "type": "string",
+        "label": "Origem da fonte",
+        "description": "URL de CSS, URL direta de fonte ou caminho do computador.",
+        "default": "https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@600;700;800&display=swap",
+        "tab": "identity"
+      },
+      {
+        "key": "paletteSection",
+        "type": "separator",
+        "label": "Paleta CatOPanda",
+        "description": "Use cores hexadecimais no formato #RRGGBB.",
+        "tab": "identity"
+      },
+      { "key": "colorCoral", "type": "string", "label": "Coral", "default": "#ff6255", "pattern": "^#[0-9A-Fa-f]{6}$", "tab": "identity" },
+      { "key": "colorPurple", "type": "string", "label": "Violeta", "default": "#9b44e8", "pattern": "^#[0-9A-Fa-f]{6}$", "tab": "identity" },
+      { "key": "colorCyan", "type": "string", "label": "Ciano", "default": "#58cffa", "pattern": "^#[0-9A-Fa-f]{6}$", "tab": "identity" },
+      { "key": "colorPanel", "type": "string", "label": "Painéis", "default": "#211633", "pattern": "^#[0-9A-Fa-f]{6}$", "tab": "identity" },
+      { "key": "colorText", "type": "string", "label": "Texto", "default": "#fffafd", "pattern": "^#[0-9A-Fa-f]{6}$", "tab": "identity" },
+      {
+        "key": "brbCopySection",
+        "type": "separator",
+        "label": "Texto do Palco CatOPanda",
+        "description": "Personalize a tela de intervalo sem editar o overlay.",
+        "tab": "identity"
+      },
+      { "key": "brbEyebrow", "type": "string", "label": "Selo", "default": "SUBATHON CATOPANDA", "tab": "identity" },
+      { "key": "brbTitle", "type": "string", "label": "Título", "default": "A LIVE JÁ VOLTA!", "tab": "identity" },
+      { "key": "brbSubtitle", "type": "string", "label": "Subtítulo", "default": "Enquanto isso, o cronômetro continua correndo.", "tab": "identity" },
+      { "key": "brbStatus", "type": "string", "label": "Status", "default": "Retornamos em instantes", "tab": "identity" }
+    ]
+  },
+  "nodeTypes": [
+    {
+      "type": "action.x.catopanda-subathon.record-donate",
+      "label": "CatOPanda: registrar Donate",
+      "category": "CatOPanda Subathon",
+      "description": "Registra um Donate em centavos, atualiza a meta Donate e acrescenta tempo. Todos os campos aceitam fórmula.",
+      "role": "action",
+      "fields": [
+        { "key": "amountCents", "label": "Valor (centavos)", "kind": "number", "min": 1, "helpText": "R$ 5 = 500. Com LivePix use {{ $trigger.metadata.amount }}." },
+        { "key": "eventKey", "label": "Chave única do evento", "kind": "text", "helpText": "Opcional, mas recomendado: a mesma chave nunca soma duas vezes." },
+        { "key": "actorName", "label": "Nome do apoiador", "kind": "text" },
+        {
+          "key": "source",
+          "label": "Origem",
+          "kind": "select",
+          "options": [
+            { "value": "livepix", "label": "LivePix" },
+            { "value": "manual", "label": "Manual" },
+            { "value": "other", "label": "Outra plataforma" }
+          ]
+        }
+      ],
+      "defaultData": { "amountCents": 100, "eventKey": "", "actorName": "", "source": "manual" },
+      "outputSchema": [
+        { "path": "accepted", "type": "boolean", "description": "Indica se a contribuição foi aplicada." },
+        { "path": "duplicate", "type": "boolean", "description": "Indica que a chave já havia sido processada." },
+        { "path": "secondsAdded", "type": "number", "description": "Tempo acrescentado ao cronômetro." },
+        { "path": "total", "type": "number", "description": "Total acumulado de Donate em centavos." },
+        { "path": "remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "formatted", "type": "string", "description": "Tempo restante em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.record-bits",
+      "label": "CatOPanda: registrar Bits",
+      "category": "CatOPanda Subathon",
+      "description": "Registra Bits da Twitch, atualiza a meta Bits e acrescenta tempo.",
+      "role": "action",
+      "fields": [
+        { "key": "bits", "label": "Bits", "kind": "number", "min": 1, "helpText": "Com o gatilho Twitch Bits use {{ $trigger.metadata.bits }}." },
+        { "key": "eventKey", "label": "Chave única do evento", "kind": "text" },
+        { "key": "actorName", "label": "Nome do apoiador", "kind": "text" }
+      ],
+      "defaultData": { "bits": 100, "eventKey": "", "actorName": "" },
+      "outputSchema": [
+        { "path": "accepted", "type": "boolean", "description": "Indica se a contribuição foi aplicada." },
+        { "path": "duplicate", "type": "boolean", "description": "Indica que a chave já havia sido processada." },
+        { "path": "secondsAdded", "type": "number", "description": "Tempo acrescentado ao cronômetro." },
+        { "path": "total", "type": "number", "description": "Total acumulado de Bits." },
+        { "path": "remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "formatted", "type": "string", "description": "Tempo restante em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.record-sub",
+      "label": "CatOPanda: registrar Sub",
+      "category": "CatOPanda Subathon",
+      "description": "Registra Sub, Resub ou presentes da Twitch e acrescenta tempo conforme o tier.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "tier",
+          "label": "Tier",
+          "kind": "select",
+          "helpText": "Com os gatilhos Twitch use {{ $trigger.metadata.tier }}. A Twitch entrega Prime como Tier 1.",
+          "options": [
+            { "value": "1000", "label": "Tier 1" },
+            { "value": "2000", "label": "Tier 2" },
+            { "value": "3000", "label": "Tier 3" },
+            { "value": "prime", "label": "Prime" }
+          ]
+        },
+        { "key": "count", "label": "Quantidade", "kind": "number", "min": 1, "max": 1000, "helpText": "Sub presenteado em lote: {{ $trigger.metadata.total }}." },
+        { "key": "eventKey", "label": "Chave única do evento", "kind": "text" },
+        { "key": "actorName", "label": "Nome do apoiador", "kind": "text" }
+      ],
+      "defaultData": { "tier": "1000", "count": 1, "eventKey": "", "actorName": "" },
+      "outputSchema": [
+        { "path": "accepted", "type": "boolean", "description": "Indica se a contribuição foi aplicada." },
+        { "path": "duplicate", "type": "boolean", "description": "Indica que a chave já havia sido processada." },
+        { "path": "secondsAdded", "type": "number", "description": "Tempo acrescentado ao cronômetro." },
+        { "path": "total", "type": "number", "description": "Total acumulado de Subs." },
+        { "path": "remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "formatted", "type": "string", "description": "Tempo restante em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.record-contribution",
+      "label": "CatOPanda: registrar contribuição",
+      "category": "CatOPanda Subathon",
+      "description": "Bloco genérico: escolha o tipo por fórmula e ligue qualquer plataforma ao subathon.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "contributionType",
+          "label": "Tipo",
+          "kind": "select",
+          "options": [
+            { "value": "donate", "label": "Donate (centavos)" },
+            { "value": "subs", "label": "Subs (quantidade)" },
+            { "value": "bits", "label": "Bits (quantidade)" }
+          ]
+        },
+        { "key": "value", "label": "Valor", "kind": "number", "min": 1, "helpText": "Centavos para Donate; quantidade para Subs e Bits." },
+        {
+          "key": "tier",
+          "label": "Tier (somente Subs)",
+          "kind": "select",
+          "options": [
+            { "value": "1000", "label": "Tier 1" },
+            { "value": "2000", "label": "Tier 2" },
+            { "value": "3000", "label": "Tier 3" },
+            { "value": "prime", "label": "Prime" }
+          ]
+        },
+        { "key": "eventKey", "label": "Chave única do evento", "kind": "text" },
+        { "key": "actorName", "label": "Nome do apoiador", "kind": "text" },
+        { "key": "source", "label": "Origem", "kind": "text", "placeholder": "streamelements", "helpText": "Texto livre exibido no histórico." }
+      ],
+      "defaultData": { "contributionType": "donate", "value": 100, "tier": "1000", "eventKey": "", "actorName": "", "source": "" },
+      "outputSchema": [
+        { "path": "accepted", "type": "boolean", "description": "Indica se a contribuição foi aplicada." },
+        { "path": "duplicate", "type": "boolean", "description": "Indica que a chave já havia sido processada." },
+        { "path": "secondsAdded", "type": "number", "description": "Tempo acrescentado ao cronômetro." },
+        { "path": "total", "type": "number", "description": "Novo total do tipo." },
+        { "path": "remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "formatted", "type": "string", "description": "Tempo restante em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.timer-control",
+      "label": "CatOPanda: controlar cronômetro",
+      "category": "CatOPanda Subathon",
+      "description": "Pausa, retoma, define ou altera manualmente o cronômetro.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "operation",
+          "label": "Operação",
+          "kind": "select",
+          "options": [
+            { "value": "pause", "label": "Pausar" },
+            { "value": "resume", "label": "Retomar" },
+            { "value": "toggle", "label": "Pausar ou retomar" },
+            { "value": "add", "label": "Adicionar" },
+            { "value": "subtract", "label": "Subtrair" },
+            { "value": "set", "label": "Definir" },
+            { "value": "reset", "label": "Restaurar valor inicial" }
+          ]
+        },
+        { "key": "seconds", "label": "Segundos", "kind": "number", "min": 0, "max": 31536000, "helpText": "Usado por Adicionar, Subtrair e Definir." }
+      ],
+      "defaultData": { "operation": "pause", "seconds": 300 },
+      "outputSchema": [
+        { "path": "running", "type": "boolean", "description": "Estado atual do cronômetro." },
+        { "path": "remainingSeconds", "type": "number", "description": "Tempo restante." },
+        { "path": "formatted", "type": "string", "description": "Tempo em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.set-total",
+      "label": "CatOPanda: definir total",
+      "category": "CatOPanda Subathon",
+      "description": "Corrige manualmente um total de Donate, Subs ou Bits sem alterar o cronômetro.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "contributionType",
+          "label": "Tipo",
+          "kind": "select",
+          "options": [
+            { "value": "donate", "label": "Donate (centavos)" },
+            { "value": "subs", "label": "Subs" },
+            { "value": "bits", "label": "Bits" }
+          ]
+        },
+        { "key": "value", "label": "Novo total", "kind": "number", "min": 0 }
+      ],
+      "defaultData": { "contributionType": "donate", "value": 0 },
+      "outputSchema": [
+        { "path": "type", "type": "string", "description": "Tipo corrigido." },
+        { "path": "total", "type": "number", "description": "Novo total." },
+        { "path": "timerChanged", "type": "boolean", "description": "Sempre falso." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.reset-state",
+      "label": "CatOPanda: zerar estado",
+      "category": "CatOPanda Subathon",
+      "description": "Zera totais, cronômetro, deduplicação ou todo o estado operacional.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "scope",
+          "label": "Escopo",
+          "kind": "select",
+          "options": [
+            { "value": "totals", "label": "Somente totais" },
+            { "value": "timer", "label": "Somente cronômetro" },
+            { "value": "ledger", "label": "Somente deduplicação" },
+            { "value": "all", "label": "Tudo" }
+          ]
+        }
+      ],
+      "defaultData": { "scope": "totals" },
+      "outputSchema": [
+        { "path": "scope", "type": "string", "description": "Escopo restaurado." },
+        { "path": "ok", "type": "boolean", "description": "Sempre verdadeiro ao concluir." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.get-state",
+      "label": "CatOPanda: ler estado",
+      "category": "CatOPanda Subathon",
+      "description": "Retorna cronômetro, totais, metas e URLs dos overlays.",
+      "role": "input",
+      "outputSchema": [
+        { "path": "timer.formatted", "type": "string", "description": "Cronômetro atual em hh:mm:ss." },
+        { "path": "timer.remainingSeconds", "type": "number", "description": "Segundos restantes." },
+        { "path": "timer.running", "type": "boolean", "description": "Verdadeiro enquanto o cronômetro corre." },
+        { "path": "totals.donate", "type": "number", "description": "Donate em centavos." },
+        { "path": "totals.subs", "type": "number", "description": "Quantidade de Subs." },
+        { "path": "totals.bits", "type": "number", "description": "Quantidade de Bits." },
+        { "path": "currentGoal.title", "type": "string", "description": "Título da meta atual." },
+        { "path": "currentGoal.progress", "type": "number", "description": "Progresso da meta atual em porcentagem." },
+        { "path": "goals", "type": "array", "description": "Metas calculadas." },
+        { "path": "urls", "type": "object", "description": "URLs para Browser Source do OBS, inclusive urls.alerts." }
+      ]
+    },
+    {
+      "type": "trigger.x.catopanda-subathon.contribution",
+      "label": "CatOPanda: contribuição registrada",
+      "category": "CatOPanda Subathon",
+      "description": "Dispara depois que uma contribuição única atualiza o estado.",
+      "role": "trigger",
+      "matchFields": [
+        { "nodeField": "contributionType", "eventField": "type", "mode": "equals" },
+        { "nodeField": "minValue", "eventField": "value", "mode": "gte" }
+      ],
+      "fields": [
+        {
+          "key": "contributionType",
+          "label": "Tipo",
+          "kind": "select",
+          "options": [
+            { "value": "", "label": "Todos" },
+            { "value": "donate", "label": "Donate" },
+            { "value": "subs", "label": "Subs" },
+            { "value": "bits", "label": "Bits" }
+          ]
+        },
+        { "key": "minValue", "label": "Valor mínimo", "kind": "number", "min": 0, "helpText": "Na unidade do tipo: centavos para Donate, quantidade para Subs e Bits. 0 aceita tudo." }
+      ],
+      "defaultData": { "contributionType": "", "minValue": 0 },
+      "outputSchema": [
+        { "path": "metadata.type", "type": "string", "description": "donate, subs ou bits." },
+        { "path": "metadata.value", "type": "number", "description": "Valor da contribuição na unidade do tipo." },
+        { "path": "metadata.valueLabel", "type": "string", "description": "Valor formatado, por exemplo R$ 5,00 ou 250 Bits." },
+        { "path": "metadata.secondsAdded", "type": "number", "description": "Tempo acrescentado." },
+        { "path": "metadata.addedLabel", "type": "string", "description": "Tempo acrescentado em hh:mm:ss." },
+        { "path": "metadata.total", "type": "number", "description": "Novo total do tipo." },
+        { "path": "metadata.remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "metadata.source", "type": "string", "description": "Origem informada pelo bloco de registro." },
+        { "path": "metadata.tier", "type": "string", "description": "Tier da Sub: 1000, 2000, 3000 ou prime." },
+        { "path": "actorDisplayName", "type": "string", "description": "Nome do apoiador." }
+      ]
+    },
+    {
+      "type": "trigger.x.catopanda-subathon.goal-completed",
+      "label": "CatOPanda: meta concluída",
+      "category": "CatOPanda Subathon",
+      "description": "Dispara ao cruzar uma meta; o evento não acrescenta tempo.",
+      "role": "trigger",
+      "matchFields": [
+        { "nodeField": "goalId", "eventField": "goalId", "mode": "equals" },
+        { "nodeField": "goalType", "eventField": "type", "mode": "equals" }
+      ],
+      "fields": [
+        { "key": "goalId", "label": "ID da meta", "kind": "plain-text", "helpText": "Deixe vazio para todas." },
+        {
+          "key": "goalType",
+          "label": "Tipo da meta",
+          "kind": "select",
+          "options": [
+            { "value": "", "label": "Todos" },
+            { "value": "donate", "label": "Donate" },
+            { "value": "subs", "label": "Subs" },
+            { "value": "bits", "label": "Bits" }
+          ]
+        }
+      ],
+      "defaultData": { "goalId": "", "goalType": "" },
+      "outputSchema": [
+        { "path": "metadata.goalId", "type": "string", "description": "ID configurado da meta." },
+        { "path": "metadata.type", "type": "string", "description": "Tipo da meta." },
+        { "path": "metadata.title", "type": "string", "description": "Texto da meta." },
+        { "path": "metadata.target", "type": "number", "description": "Alvo da meta." },
+        { "path": "metadata.targetLabel", "type": "string", "description": "Alvo formatado." },
+        { "path": "metadata.completedCount", "type": "number", "description": "Quantas metas já foram concluídas." },
+        { "path": "metadata.nextTitle", "type": "string", "description": "Título da próxima meta, ou vazio." },
+        { "path": "metadata.timerChanged", "type": "boolean", "description": "Sempre falso." }
+      ]
+    },
+    {
+      "type": "trigger.x.catopanda-subathon.timer-warning",
+      "label": "CatOPanda: cronômetro abaixo de",
+      "category": "CatOPanda Subathon",
+      "description": "Dispara uma vez quando o tempo restante cruza um dos marcos configurados na aba Cronômetro.",
+      "role": "trigger",
+      "matchFields": [
+        { "nodeField": "thresholdSeconds", "eventField": "thresholdSeconds", "mode": "equals" }
+      ],
+      "fields": [
+        { "key": "thresholdSeconds", "label": "Marco (segundos)", "kind": "number", "min": 1, "optional": true, "helpText": "Vazio dispara em todos os marcos. O valor precisa constar na lista da aba Cronômetro." }
+      ],
+      "defaultData": {},
+      "outputSchema": [
+        { "path": "metadata.thresholdSeconds", "type": "number", "description": "Marco cruzado." },
+        { "path": "metadata.remainingSeconds", "type": "number", "description": "Tempo restante no momento do aviso." },
+        { "path": "metadata.formatted", "type": "string", "description": "Tempo restante em hh:mm:ss." }
+      ]
+    },
+    {
+      "type": "trigger.x.catopanda-subathon.timer-finished",
+      "label": "CatOPanda: cronômetro finalizado",
+      "category": "CatOPanda Subathon",
+      "description": "Dispara uma vez quando a contagem regressiva chega a zero.",
+      "role": "trigger",
+      "outputSchema": [
+        { "path": "metadata.finishedAt", "type": "string", "description": "Horário ISO da finalização." },
+        { "path": "metadata.formatted", "type": "string", "description": "Sempre 00:00:00." },
+        { "path": "metadata.totals.donate", "type": "number", "description": "Donate final em centavos." },
+        { "path": "metadata.totals.subs", "type": "number", "description": "Subs finais." },
+        { "path": "metadata.totals.bits", "type": "number", "description": "Bits finais." }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "catopanda-subathon-twitch",
+      "name": "CatOPanda Subathon: Twitch pronta",
+      "description": "Liga Bits, Sub, Resub e Sub presenteado da integração Twitch nativa às regras do subathon. Importa desligado; revise e ative.",
+      "flow": {
+        "schemaVersion": 1,
+        "id": "tpl-catopanda-subathon-twitch",
+        "name": "CatOPanda Subathon: Twitch",
+        "enabled": false,
+        "nodes": [
+          { "type": "trigger.twitch.bits", "id": "twitch-bits", "minBits": 1 },
+          {
+            "type": "action.x.catopanda-subathon.record-bits",
+            "id": "record-bits",
+            "bits": { "mode": "expression", "expression": "{{ $trigger.metadata.bits }}" },
+            "eventKey": { "mode": "expression", "expression": "twitch:bits:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
+          },
+          { "type": "trigger.twitch.subscribe", "id": "twitch-subscribe" },
+          {
+            "type": "action.x.catopanda-subathon.record-sub",
+            "id": "record-subscribe",
+            "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
+            "count": { "mode": "fixed", "value": 1 },
+            "eventKey": { "mode": "expression", "expression": "twitch:subscribe:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
+          },
+          { "type": "trigger.twitch.resub", "id": "twitch-resub" },
+          {
+            "type": "action.x.catopanda-subathon.record-sub",
+            "id": "record-resub",
+            "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
+            "count": { "mode": "fixed", "value": 1 },
+            "eventKey": { "mode": "expression", "expression": "twitch:resub:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
+          },
+          { "type": "trigger.twitch.subGift", "id": "twitch-sub-gift", "minCount": 1 },
+          {
+            "type": "action.x.catopanda-subathon.record-sub",
+            "id": "record-sub-gift",
+            "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
+            "count": { "mode": "expression", "expression": "{{ $trigger.metadata.total }}" },
+            "eventKey": { "mode": "expression", "expression": "twitch:gift:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
+          }
+        ],
+        "edges": [
+          { "id": "e-bits", "source": "twitch-bits", "target": "record-bits" },
+          { "id": "e-subscribe", "source": "twitch-subscribe", "target": "record-subscribe" },
+          { "id": "e-resub", "source": "twitch-resub", "target": "record-resub" },
+          { "id": "e-sub-gift", "source": "twitch-sub-gift", "target": "record-sub-gift" }
+        ],
+        "layout": {
+          "twitch-bits": { "x": 0, "y": 0 },
+          "record-bits": { "x": 380, "y": 0 },
+          "twitch-subscribe": { "x": 0, "y": 200 },
+          "record-subscribe": { "x": 380, "y": 200 },
+          "twitch-resub": { "x": 0, "y": 400 },
+          "record-resub": { "x": 380, "y": 400 },
+          "twitch-sub-gift": { "x": 0, "y": 600 },
+          "record-sub-gift": { "x": 380, "y": 600 }
+        }
+      }
+    },
+    {
+      "id": "catopanda-subathon-livepix",
+      "name": "CatOPanda Subathon: LivePix pronta",
+      "description": "Cada pagamento do plugin LivePix vira Donate no subathon, com deduplicação pela chave do LivePix. Requer o plugin LivePix instalado. Importa desligado; revise e ative.",
+      "flow": {
+        "schemaVersion": 1,
+        "id": "tpl-catopanda-subathon-livepix",
+        "name": "CatOPanda Subathon: LivePix",
+        "enabled": false,
+        "nodes": [
+          { "type": "trigger.x.livepix.donation", "id": "livepix-donation", "minAmountCents": 0, "textContains": "", "requireMessage": "" },
+          {
+            "type": "action.x.catopanda-subathon.record-donate",
+            "id": "record-donate",
+            "amountCents": { "mode": "expression", "expression": "{{ $trigger.metadata.amount }}" },
+            "eventKey": { "mode": "expression", "expression": "{{ $trigger.metadata.eventKey }}" },
+            "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" },
+            "source": { "mode": "fixed", "value": "livepix" }
+          }
+        ],
+        "edges": [
+          { "id": "e-donate", "source": "livepix-donation", "target": "record-donate" }
+        ],
+        "layout": {
+          "livepix-donation": { "x": 0, "y": 0 },
+          "record-donate": { "x": 380, "y": 0 }
+        }
+      }
+    },
+    {
+      "id": "catopanda-subathon-console",
+      "name": "CatOPanda Subathon: acompanhar no console",
+      "description": "Registra no console cada contribuição, meta concluída e aviso de reta final. Serve para testar as regras antes da live.",
+      "flow": {
+        "schemaVersion": 1,
+        "id": "tpl-catopanda-subathon-console",
+        "name": "CatOPanda Subathon: console",
+        "enabled": false,
+        "nodes": [
+          { "type": "trigger.x.catopanda-subathon.contribution", "id": "on-contribution", "contributionType": "", "minValue": 0 },
+          {
+            "type": "action.console.log",
+            "id": "log-contribution",
+            "level": "info",
+            "message": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }} enviou {{ $trigger.metadata.valueLabel }} (+{{ $trigger.metadata.addedLabel }})" }
+          },
+          { "type": "trigger.x.catopanda-subathon.goal-completed", "id": "on-goal", "goalId": "", "goalType": "" },
+          {
+            "type": "action.console.log",
+            "id": "log-goal",
+            "level": "info",
+            "message": { "mode": "expression", "expression": "Meta concluída: {{ $trigger.metadata.title }}" }
+          },
+          { "type": "trigger.x.catopanda-subathon.timer-warning", "id": "on-warning" },
+          {
+            "type": "action.console.log",
+            "id": "log-warning",
+            "level": "warn",
+            "message": { "mode": "expression", "expression": "Reta final: restam {{ $trigger.metadata.formatted }}" }
+          }
+        ],
+        "edges": [
+          { "id": "e-contribution", "source": "on-contribution", "target": "log-contribution" },
+          { "id": "e-goal", "source": "on-goal", "target": "log-goal" },
+          { "id": "e-warning", "source": "on-warning", "target": "log-warning" }
+        ],
+        "layout": {
+          "on-contribution": { "x": 0, "y": 0 },
+          "log-contribution": { "x": 380, "y": 0 },
+          "on-goal": { "x": 0, "y": 200 },
+          "log-goal": { "x": 380, "y": 200 },
+          "on-warning": { "x": 0, "y": 400 },
+          "log-warning": { "x": 380, "y": 400 }
+        }
+      }
+    }
+  ]
+}

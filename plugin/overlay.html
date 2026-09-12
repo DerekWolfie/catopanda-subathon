@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>CatOPanda Subathon</title>
+    <link rel="stylesheet" href="/overlay.css" />
+    <link rel="stylesheet" href="/theme.css" />
+  </head>
+  <body>
+    <main id="overlay-root" class="overlay-root" aria-live="polite">
+      <section class="view view--brb-stage" data-view="brb-stage">
+        <div class="brb-stage__wash" aria-hidden="true"></div>
+        <div class="brb-stage__copy">
+          <p class="eyebrow" data-copy="eyebrow">SUBATHON CATOPANDA</p>
+          <h1 class="brb-stage__title">
+            <span data-copy="title-first">A LIVE</span>
+            <span data-copy="title-second">JÁ VOLTA!</span>
+          </h1>
+          <p class="brb-stage__subtitle" data-copy="subtitle">
+            Enquanto isso, o cronômetro continua correndo.
+          </p>
+          <p class="live-status"><i aria-hidden="true"></i><span data-copy="status">Retornamos em instantes</span></p>
+          <strong class="brb-stage__timer timer-digits" data-timer>00:00:00</strong>
+        </div>
+        <div class="brb-stage__mascot">
+          <i class="mascot-halo" aria-hidden="true"></i>
+          <img class="brb-stage__logo" src="/assets/catopanda-logo.png" alt="Cat O Panda" />
+        </div>
+        <div class="brb-stage__goal glass-card" data-goal-card>
+          <div class="goal-summary">
+            <span>Meta atual</span>
+            <strong class="marquee" data-current-goal-title>Nenhuma meta configurada</strong>
+          </div>
+          <div class="progress progress--labeled">
+            <i class="progress__fill" data-current-goal-fill></i>
+            <span data-current-goal-amount>0 / 0</span>
+            <strong data-current-goal-percent>0%</strong>
+          </div>
+          <p class="goal-next">Próxima: <strong class="marquee" data-next-goal-title>Nenhuma</strong></p>
+        </div>
+      </section>
+
+      <section class="view view--goals-footer" data-view="goals-footer">
+        <div class="goals-footer__panel glass-card">
+          <div class="goals-footer__list" data-goals-footer-list></div>
+          <img src="/assets/catopanda-logo.png" alt="Cat O Panda" />
+        </div>
+      </section>
+
+      <section class="view view--goals-totem" data-view="goals-totem">
+        <div class="totem glass-card">
+          <header class="totem__header">
+            <img src="/assets/catopanda-logo.png" alt="Cat O Panda" />
+            <div>
+              <span>Subathon CatOPanda</span>
+              <strong>Metas da comunidade</strong>
+            </div>
+          </header>
+          <div class="totem__list" data-goals-totem-list></div>
+          <footer class="totem__footer">
+            <span data-completed-summary>0 concluídas</span>
+            <strong class="marquee" data-totem-next>Próxima meta</strong>
+          </footer>
+        </div>
+      </section>
+
+      <section class="view view--progress-triple" data-view="progress-triple">
+        <div class="scoreboard" data-scoreboard></div>
+      </section>
+
+      <section class="view view--progress-pill" data-view="progress-pill">
+        <div class="progress-pill glass-card glass-card--light" data-goal-card>
+          <img src="/assets/catopanda-avatar.png" alt="CatOPanda" />
+          <div class="progress-pill__copy">
+            <span data-pill-kind>Comunidade</span>
+            <strong class="marquee" data-pill-amount>0 de 0</strong>
+          </div>
+          <div class="progress progress--labeled">
+            <i class="progress__fill" data-pill-fill></i>
+            <span class="marquee" data-pill-title>Nenhuma meta configurada</span>
+            <strong data-pill-percent>0%</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view--timer-giant" data-view="timer-giant">
+        <div class="timer-giant">
+          <div class="timer-giant__mascot">
+            <i class="mascot-halo" aria-hidden="true"></i>
+            <img src="/assets/catopanda-avatar.png" alt="CatOPanda" />
+          </div>
+          <div class="timer-giant__copy">
+            <span data-timer-status>SUBATHON AO VIVO</span>
+            <strong class="timer-digits" data-timer>00:00:00</strong>
+            <small data-last-support>À espera do próximo apoio</small>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view--alerts" data-view="alerts" aria-label="Alertas do subathon"></section>
+
+      <div class="toast-stack" data-toast-stack aria-live="polite"></div>
+      <div class="celebration" data-celebration hidden>
+        <span class="celebration__eyebrow" data-celebration-eyebrow>Meta concluída</span>
+        <strong class="celebration__title" data-celebration-title></strong>
+        <span class="celebration__next" data-celebration-next></span>
+      </div>
+      <canvas class="confetti" data-confetti aria-hidden="true"></canvas>
+    </main>
+    <noscript>Ative o JavaScript nesta Browser Source.</noscript>
+    <script src="/overlay.js" defer></script>
+  </body>
+</html>

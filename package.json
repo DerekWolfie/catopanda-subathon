@@ -1,0 +1,19 @@
+{
+  "name": "catopanda-subathon",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "Cronômetro, metas e overlays de subathon para OSC Flow Studio 0.5.x",
+  "repository": { "type": "git", "url": "https://github.com/DerekWolfie/catopanda-subathon.git" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "validate": "node scripts/validate.mjs",
+    "check": "node --check plugin/index.mjs && node --check plugin/overlay.js && npm run validate && npm test",
+    "prepackage": "npm run check",
+    "package": "node sdk/ofs-package.mjs pack plugin --out dist",
+    "catalog": "node scripts/build-catalog.mjs"
+  },
+  "devDependencies": { "ajv": "8.17.1", "ajv-formats": "3.0.1" }
+}

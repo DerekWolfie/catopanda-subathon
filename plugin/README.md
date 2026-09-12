@@ -1,0 +1,105 @@
+# CatOPanda Subathon 0.4.1
+
+Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
+`io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 1.2.0 (ZIP
+separado) e importe o template **CatOPanda Subathon: LivePix pronta**.
+
+## Depois de ativar
+
+Para acompanhar atualizações, depois da primeira release pública, adicione esta fonte
+em **Integrações → Sources** e abra **Catalog**:
+
+```text
+https://github.com/DerekWolfie/catopanda-subathon/releases/latest/download/listing.json
+```
+
+O pacote preserva IDs de blocos, configurações, metas e estado das versões anteriores.
+Ao atualizar uma instalação em uso, conclua o reinício solicitado pelo Studio.
+
+1. Ajuste porta, conversões, metas, efeitos e tema nas abas da configuração. Salvar
+   reinicia o plugin com os valores novos; não é preciso desligar e ligar.
+2. Importe os templates que fizerem sentido: **Twitch pronta** (Bits, Sub, Resub e Sub
+   presenteado), **LivePix pronta** (cada pagamento vira Donate) e **acompanhar no
+   console** (para testar as regras antes da live). Os templates chegam desligados;
+   revise e ative cada flow.
+3. No OBS, adicione as URLs abaixo como Browser Source em 1920 × 1080. A ação
+   **CatOPanda: ler estado** também devolve as URLs em `urls.*`.
+
+## Rotas na porta padrão 8798
+
+| Visual | URL |
+|---|---|
+| Palco CatOPanda | `http://127.0.0.1:8798/overlay/brb-stage` |
+| Rodapé de metas | `http://127.0.0.1:8798/overlay/goals-footer` |
+| Totem editorial | `http://127.0.0.1:8798/overlay/goals-totem` |
+| Placar triplo | `http://127.0.0.1:8798/overlay/progress-triple` |
+| Pílula dupla | `http://127.0.0.1:8798/overlay/progress-pill` |
+| Dígitos gigantes | `http://127.0.0.1:8798/overlay/timer-giant` |
+| Alertas | `http://127.0.0.1:8798/overlay/alerts` |
+
+`?transparent=1` força fundo transparente e `?transparent=0` força o fundo configurado.
+`?scale=0.85` ajusta a escala daquela fonte sem alterar a configuração global.
+
+**Alertas** é a camada de avisos: toast de tempo adicionado com o nome do apoiador, faixa
+e confete ao concluir meta, faixa de reta final e de encerramento. Sempre transparente;
+coloque-a acima das outras fontes no OBS. A posição dos toasts vem da configuração ou de
+`?position=bottom-left` (top-right, top-left, top-center, bottom-right, bottom-left,
+bottom-center). Os outros overlays não mostram avisos; para uma cena com uma única fonte,
+acrescente `?alerts=1` à URL dela.
+
+## Blocos
+
+Todo campo de texto, número e seleção dos blocos de ação aceita fórmula: clique em Fx
+no editor ou escreva `{{ $trigger.metadata.bits }}` direto.
+
+| Bloco | O que faz |
+|---|---|
+| registrar Donate | Soma centavos ao total Donate e converte em tempo. Origem: LivePix, manual ou outra. |
+| registrar Bits | Soma Bits e converte em tempo por unidade. |
+| registrar Sub | Soma Subs e converte em tempo pelo tier: 1, 2, 3 ou Prime. |
+| registrar contribuição | Bloco genérico com tipo por fórmula, para ligar qualquer plataforma. |
+| controlar cronômetro | Pausar, retomar, alternar, adicionar, subtrair, definir ou restaurar. |
+| definir total | Corrige um total sem mexer no cronômetro. |
+| zerar estado | Zera totais, cronômetro, deduplicação ou tudo. |
+| ler estado | Cronômetro, totais, metas e URLs. |
+| contribuição registrada | Gatilho. Filtra por tipo e valor mínimo. |
+| meta concluída | Gatilho. Filtra por ID ou tipo da meta. Nunca acrescenta tempo. |
+| cronômetro abaixo de | Gatilho. Dispara uma vez em cada marco da aba Cronômetro. |
+| cronômetro finalizado | Gatilho. Dispara uma vez quando o tempo chega a zero. |
+
+Informe uma **chave única do evento** sempre que puder: a mesma chave nunca soma duas
+vezes, mesmo que o gatilho repita a entrega. Os templates já preenchem a chave.
+
+### Sub Prime
+
+A aba **Cronômetro** tem um valor próprio para **Segundos por Sub Prime**, e os blocos
+de Sub oferecem o tier **Prime**. Uma ressalva honesta: o EventSub da Twitch entrega uma
+Sub Prime como Tier 1 e não diz que é Prime, então o template automático conta Prime como
+Tier 1. O tier Prime vale quando você escolhe no bloco, quando a fórmula vem de uma fonte
+que informa Prime, ou em um registro manual.
+
+## Metas e efeitos
+
+Na aba **Metas**, cada linha recebe ID, tipo, título, alvo e ordem. Donate usa centavos
+(R$ 300 = 30000); Subs e Bits usam quantidade.
+
+Na aba **Overlays**, a seção **Efeitos** liga o brilho e o movimento dos cartões, o
+confete ao concluir meta e o aviso de tempo adicionado, e escolhe o canto dos avisos no
+overlay Alertas. A duração das celebrações é configurável. Browser Sources com `prefers-reduced-motion` recebem tudo estático.
+
+## Porta ocupada
+
+Se outro programa já estiver usando a porta, o plugin não morre: o cronômetro, as metas,
+os gatilhos e os blocos continuam funcionando, o card fica em **degradado** dizendo qual
+porta está ocupada, e a cada quinze segundos ele tenta abrir a mesma porta de novo. Assim
+que a porta liberar, os overlays voltam sozinhos, com as mesmas URLs já coladas no OBS.
+
+## Segurança
+
+- O servidor responde apenas em `127.0.0.1`; nenhuma outra máquina da rede o alcança.
+- Uma porta ocupada nunca vira outra porta: as URLs do OBS não mudam por baixo do pano.
+- Nenhuma credencial passa por este plugin. Pagamentos chegam pelo plugin LivePix e
+  eventos da Twitch pela integração nativa.
+- A rota de fonte local serve somente arquivos `.woff`, `.woff2`, `.ttf` e `.otf`
+  apontados na configuração.
+- O estado (cronômetro, totais, deduplicação) fica no cofre criptografado do Studio.
