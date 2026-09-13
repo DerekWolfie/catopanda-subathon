@@ -529,22 +529,23 @@ body.is-ready {
   to { transform: translateY(-0.8cqw) rotate(1deg); }
 }
 
-/* Rodapé de metas */
+/* One footer row, with a stationary logo and an overflowing goal track. */
 .view--goals-footer {
   pointer-events: none;
+  transform-origin: center bottom;
 }
 
 .goals-footer__panel {
   position: absolute;
   left: 1.2cqw;
   right: 1.2cqw;
-  bottom: 3.2cqw;
-  min-height: 10.4cqw;
+  bottom: 1.2cqw;
+  height: min(clamp(96px, 8.4cqw, 162px), calc(100% - 2.4cqw));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 15cqw;
+  grid-template-columns: minmax(0, 1fr) clamp(64px, 8cqw, 154px);
   align-items: stretch;
   gap: 1cqw;
-  padding: 1.25cqw;
+  padding: clamp(8px, 0.8cqw, 16px);
   overflow: hidden;
   border-radius: 1.35cqw;
   --glass-bg: rgba(31, 17, 55, 0.82);
@@ -554,28 +555,52 @@ body.is-ready {
   display: none;
 }
 
+.goals-footer__viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--purple) var(--panel);
+  pointer-events: auto;
+}
+
+.goals-footer__viewport.is-scrolling {
+  overflow-x: hidden;
+}
+
+.goals-footer__viewport:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+
 .goals-footer__list {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.55cqw;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  height: 100%;
+  gap: clamp(8px, 0.6cqw, 12px);
 }
 
 .goals-footer__panel > img {
   width: 100%;
-  height: 7.6cqw;
+  height: 100%;
+  min-height: 0;
   align-self: center;
   object-fit: contain;
   filter: drop-shadow(0 0.7cqw 1.2cqw rgba(8, 3, 20, 0.34));
 }
 
 .footer-goal {
+  flex: 0 0 clamp(220px, 21cqw, 400px);
   min-width: 0;
   display: grid;
-  grid-template-columns: 0.85cqw minmax(0, 1fr);
+  grid-template-columns: max(10px, 0.85cqw) minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   align-items: center;
-  column-gap: 0.65cqw;
-  padding: 1.05cqw 0.95cqw;
+  column-gap: max(8px, 0.65cqw);
+  row-gap: 8px;
+  padding: clamp(10px, 0.8cqw, 16px);
   overflow: hidden;
   border-radius: 0.85cqw;
   --glass-bg: rgba(23, 13, 43, 0.7);
@@ -1328,13 +1353,6 @@ body.is-ready {
     width: 48cqw;
   }
 
-  .goals-footer__list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .goals-footer__panel {
-    grid-template-columns: minmax(0, 1fr) 18cqw;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

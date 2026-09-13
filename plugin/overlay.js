@@ -162,20 +162,75 @@
   function renderFooterGoals(goals) {
     const list = document.querySelector("[data-goals-footer-list]");
     if (!list) return;
-    if (unchanged(list, JSON.stringify(goals.map((goal) => [goal.id, goal.status, goal.progress, goal.title, goal.targetLabel])))) return;
-    list.replaceChildren();
-    for (const goal of goals) {
-      const item = append(list, "article", "footer-goal glass-card footer-goal--" + goal.status + " goal--" + goal.type);
+    if (unchanged(list, JSON.stringify(goals))) return;
+    // Update cards in place so contributions never restart the footer or titles.
+    const existing = new Map(Array.from(list.children, (item) => [item.dataset.goalId, item]));
+    for (const [index, goal] of goals.entries()) {
+      let item = existing.get(goal.id);
+      if (!item) {
+        item = document.createElement("article");
+        const copy = append(item, "div", "footer-goal__copy");
+        appendMarquee(copy, "strong", "", goal.title);
+        append(copy, "span", "", goal.targetLabel);
+        append(append(item, "div", "footer-goal__bar"), "i", "bar-fill");
+      }
+      existing.delete(goal.id);
+      if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
+      item.className = "footer-goal glass-card footer-goal--" + goal.status + " goal--" + goal.type;
       item.dataset.goalId = goal.id;
-      const copy = append(item, "div", "footer-goal__copy");
-      appendMarquee(copy, "strong", "", goal.title);
-      append(copy, "span", "", goal.targetLabel);
-      const bar = append(item, "div", "footer-goal__bar");
-      const fill = append(bar, "i", "bar-fill");
+      setMarqueeText(item.querySelector("strong"), goal.title);
+      item.querySelector(".footer-goal__copy > span").textContent = goal.targetLabel;
+      const fill = item.querySelector(".bar-fill");
       fill.style.setProperty("--fill", String(goal.progress / 100));
-      if (goal.completed) append(item, "span", "goal-check");
+      const check = item.querySelector(".goal-check");
+      if (goal.completed && !check) append(item, "span", "goal-check");
+      if (!goal.completed && check) check.remove();
     }
+    for (const item of existing.values()) item.remove();
     staggerIn(list);
+  }
+
+  const footerViewport = view === "goals-footer" ? document.querySelector("[data-goals-footer-viewport]") : null;
+  const footerTrack = footerViewport && footerViewport.querySelector("[data-goals-footer-list]");
+  let footerAnimation = null;
+  let footerDistance = 0;
+
+  function syncFooterScroll() {
+    if (!footerTrack) return;
+    const distance = Math.max(0, footerTrack.scrollWidth - footerViewport.clientWidth);
+    const shouldScroll = motionAllowed() && distance > 2;
+    if (shouldScroll && footerAnimation && footerDistance === distance) return;
+    if (footerAnimation) footerAnimation.cancel();
+    footerAnimation = null;
+    footerDistance = distance;
+    footerViewport.classList.toggle("is-scrolling", shouldScroll);
+    if (!shouldScroll) return;
+    footerViewport.scrollLeft = 0;
+    // Pause at both ends, then retrace the row without a jump or duplicate cards.
+    // Alternating iterations meet at each end, so two one-second holds add up.
+    const duration = distance / 32 * 1000 + 2000;
+    const pause = 1000 / duration;
+    footerAnimation = footerTrack.animate([
+      { transform: "translateX(0)", offset: 0 },
+      { transform: "translateX(0)", offset: pause },
+      { transform: "translateX(" + String(-distance) + "px)", offset: 1 - pause },
+      { transform: "translateX(" + String(-distance) + "px)", offset: 1 },
+    ], { duration, iterations: Infinity, direction: "alternate", easing: "linear" });
+    if (footerViewport.matches(":hover, :focus-within")) footerAnimation.pause();
+  }
+
+  if (footerViewport) {
+    new ResizeObserver(syncFooterScroll).observe(footerViewport);
+    new ResizeObserver(syncFooterScroll).observe(footerTrack);
+    reducedMotion.addEventListener("change", syncFooterScroll);
+    for (const event of ["pointerenter", "focusin"]) {
+      footerViewport.addEventListener(event, function () { if (footerAnimation) footerAnimation.pause(); });
+    }
+    for (const event of ["pointerleave", "focusout"]) {
+      footerViewport.addEventListener(event, function () {
+        if (footerAnimation && !footerViewport.matches(":hover, :focus-within")) footerAnimation.play();
+      });
+    }
   }
 
   function renderTotem(state) {
@@ -290,6 +345,7 @@
     setFill("[data-pill-fill]", goal ? goal.progress : 100);
 
     renderFooterGoals(state.goals);
+    syncFooterScroll();
     renderTotem(state);
     renderScoreboard(state.score);
     document.body.classList.add("is-ready");

@@ -1,4 +1,4 @@
-# CatOPanda Subathon 0.4.2
+# CatOPanda Subathon 0.4.3
 
 Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
 `io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 1.2.0 (ZIP
@@ -36,6 +36,13 @@ Ao atualizar uma instalação em uso, conclua o reinício solicitado pelo Studio
 | Pílula dupla | `http://127.0.0.1:8798/overlay/progress-pill` |
 | Dígitos gigantes | `http://127.0.0.1:8798/overlay/timer-giant` |
 | Alertas | `http://127.0.0.1:8798/overlay/alerts` |
+
+The goals footer stays in one row at the bottom, with a fixed logo. Overflowing
+goals scroll horizontally, pause for two seconds at each end, then reverse.
+Progress updates keep the current scroll position. Hover or keyboard focus pauses
+the track. With effects disabled or reduced motion enabled, scroll manually in
+OBS Browser Source Interact. The footer also supports short browser sources
+(for example, 1920 ? 180) without wrapping goals into extra rows.
 
 `?transparent=1` força fundo transparente e `?transparent=0` força o fundo configurado.
 `?scale=0.85` ajusta a escala daquela fonte sem alterar a configuração global.

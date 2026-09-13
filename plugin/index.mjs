@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 
-const PLUGIN_VERSION = "0.4.2";
+const PLUGIN_VERSION = "0.4.3";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_LEDGER_KEYS = 1000;

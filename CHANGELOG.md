@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3 (2026-09-13)
+
+- Keep the goals footer in one fixed-height row at the bottom of the overlay.
+- Scroll overflowing goals horizontally at 32 pixels per second, with a two-second
+  pause at each end before reversing. The logo stays fixed.
+- Preserve the scroll position and title animations when goal progress updates.
+- Pause on hover or keyboard focus. When effects are disabled or reduced motion
+  is requested, use manual horizontal scrolling instead.
+- Keep the existing goal configuration and contribution contracts.
+
 ## 0.4.2 — 2026-09-13
 
 - Metas de Donate recebem reais no campo Alvo: `52,01` ou `52.01` resulta em R$ 52,01.
