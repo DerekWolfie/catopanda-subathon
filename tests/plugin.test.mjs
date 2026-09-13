@@ -396,6 +396,100 @@ test("goals from the native table keep type, target and order", async () => {
   }
 });
 
+test("Donate goal accepts reais with comma or point and completes at the exact cent", async () => {
+  const fixture = context({ goals: [
+    { id: "donate-fraction", type: "donate", title: "Meta fracionada", amount: "52,01", target: 999999, order: 1 },
+  ] });
+  await plugin.activate(fixture.ctx);
+  try {
+    const initial = await fixture.actions.get("get-state")({});
+    assert.equal(initial.goals[0].target, 5201);
+    assert.equal(initial.goals[0].targetLabel.replace(/\s/g, " "), "R$ 52,01");
+    assert.equal(initial.goals[0].amountLabel.replace(/\s/g, " "), "R$ 0 / R$ 52,01");
+    await fixture.actions.get("record-donate")({ amountCents: 5200, eventKey: "fraction-1" });
+    assert.equal((await fixture.actions.get("get-state")({})).goals[0].completed, false);
+    await fixture.actions.get("record-donate")({ amountCents: 1, eventKey: "fraction-2" });
+    const completed = await fixture.actions.get("get-state")({});
+    assert.equal(completed.goals[0].completed, true);
+    assert.equal(completed.totals.donateCents, 5201);
+    assert.equal(fixture.triggers.filter((event) => event.name === "goal-completed").length, 1);
+    const base = new URL(initial.urls.brbStage).origin;
+    const served = await (await fetch(base + "/api/state")).json();
+    assert.equal(served.goals[0].amountLabel.replace(/\s/g, " "), "R$ 52,01 / R$ 52,01");
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("decimal targets keep precision, pt-BR grouping, whole reais and fractional counts", async () => {
+  const samples = [
+    [52.01, "donate", 5201], ["52.01", "donate", 5201], ["52,0100", "donate", 5201],
+    ["1.234,56", "donate", 123456], ["52", "donate", 5200], ["0,01", "donate", 1],
+    [".5", "donate", 50], ["1.005", "donate", 101], ["1,004", "donate", 100],
+    ["2,75", "subs", 2.75], ["150.5", "bits", 150.5],
+  ];
+  const fixture = context({ goals: samples.map(([amount, type], index) => ({
+    id: `decimal-${index}`, title: `Meta ${index}`, type, amount, target: 0, order: index,
+  })) });
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    assert.deepEqual(state.goals.map((goal) => goal.target), samples.map((sample) => sample[2]));
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("old cents survive an editor save and restart until the new Alvo is filled", async () => {
+  const secrets = new Map();
+  // A missing optional column is saved as empty text by the SDK table editor.
+  const saved = { goals: [{ id: "old-donate", type: "donate", title: "Título editado", amount: "", target: 5201, order: 1 }] };
+  const first = context(saved, secrets);
+  await plugin.activate(first.ctx);
+  try {
+    assert.equal((await first.actions.get("get-state")({})).goals[0].target, 5201);
+    await first.actions.get("record-donate")({ amountCents: 2000, eventKey: "old-donation" });
+  } finally {
+    await plugin.deactivate();
+  }
+  const second = context(saved, secrets);
+  await plugin.activate(second.ctx);
+  try {
+    const state = await second.actions.get("get-state")({});
+    assert.equal(state.goals[0].target, 5201);
+    assert.equal(state.totals.donateCents, 2000);
+    assert.equal((await second.actions.get("record-donate")({ amountCents: 2000, eventKey: "old-donation" })).accepted, false);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("new default table has reais, preserves legacy JSON, and edited reais take precedence", async () => {
+  const defaults = manifest.configSchema.fields.find((field) => field.key === "goals").default;
+  const fixture = context({ goals: defaults });
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    assert.deepEqual(state.goals.map((goal) => goal.target), [10000, 15000, 20000, 30000, 50, 10000]);
+  } finally { await plugin.deactivate(); }
+  const legacy = JSON.stringify([{ id: "legacy-donate", type: "donate", title: "Antiga", target: 5201, order: 1 }]);
+  const old = context({ goals: defaults, goalsJson: legacy });
+  await plugin.activate(old.ctx);
+  try {
+    assert.equal((await old.actions.get("get-state")({})).goals[0].target, 5201);
+  } finally { await plugin.deactivate(); }
+  const edited = structuredClone(defaults);
+  edited[0].amount = "52,01";
+  const next = context({ goals: edited, goalsJson: legacy });
+  await plugin.activate(next.ctx);
+  try {
+    const state = await next.actions.get("get-state")({});
+    assert.equal(state.goals[0].id, "donate-100");
+    assert.equal(state.goals[0].target, 5201);
+    assert.equal(state.goals.length, 6);
+  } finally { await plugin.deactivate(); }
+});
+
 test("version 0.1 goalsJson stays readable until the table is edited", async () => {
   const fixture = context({
     goals: [

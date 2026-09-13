@@ -2,7 +2,7 @@
   "$schema": "../sdk/community-plugin-manifest.schema.json",
   "id": "catopanda-subathon",
   "name": "CatOPanda Subathon",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "packageId": "io.github.osc-flow-studio.catopanda-subathon",
   "engines": { "oscFlowStudio": ">=0.5.0 <0.6.0" },
   "author": { "name": "DerekWolfie", "url": "https://github.com/DerekWolfie" },
@@ -171,16 +171,16 @@
         "key": "goals",
         "type": "table",
         "label": "Metas do subathon",
-        "description": "Donate usa centavos (R$ 300 = 30000); Subs e Bits usam quantidade.",
+        "description": "Alvo: reais no Donate (52,01 ou 52.01 = R$ 52,01); quantidade em Subs/Bits. Alvo anterior preserva metas antigas em centavos: só é usado quando Alvo está vazio. Ao alterar uma meta antiga, preencha Alvo.",
         "tab": "goals",
         "maxItems": 50,
         "default": [
-          { "id": "donate-100", "type": "donate", "title": "Chat escolhe o outfit", "target": 10000, "order": 1 },
-          { "id": "donate-150", "type": "donate", "title": "Cantar uma música", "target": 15000, "order": 2 },
-          { "id": "donate-200", "type": "donate", "title": "Jogar terror sem luz", "target": 20000, "order": 3 },
-          { "id": "donate-300", "type": "donate", "title": "Cosplay surpresa", "target": 30000, "order": 4 },
-          { "id": "subs-50", "type": "subs", "title": "Karaokê com o chat", "target": 50, "order": 5 },
-          { "id": "bits-10000", "type": "bits", "title": "Desafio escolhido ao vivo", "target": 10000, "order": 6 }
+          { "id": "donate-100", "type": "donate", "title": "Chat escolhe o outfit", "amount": "100,00", "target": 0, "order": 1 },
+          { "id": "donate-150", "type": "donate", "title": "Cantar uma música", "amount": "150,00", "target": 0, "order": 2 },
+          { "id": "donate-200", "type": "donate", "title": "Jogar terror sem luz", "amount": "200,00", "target": 0, "order": 3 },
+          { "id": "donate-300", "type": "donate", "title": "Cosplay surpresa", "amount": "300,00", "target": 0, "order": 4 },
+          { "id": "subs-50", "type": "subs", "title": "Karaokê com o chat", "amount": "50", "target": 0, "order": 5 },
+          { "id": "bits-10000", "type": "bits", "title": "Desafio escolhido ao vivo", "amount": "10000", "target": 0, "order": 6 }
         ],
         "itemFields": [
           { "key": "id", "type": "string", "label": "ID", "required": true, "pattern": "^[a-z0-9][a-z0-9-]{0,79}$" },
@@ -197,7 +197,8 @@
             ]
           },
           { "key": "title", "type": "string", "label": "Título", "required": true, "pattern": "^.{1,160}$" },
-          { "key": "target", "type": "number", "label": "Alvo", "required": true, "min": 1, "max": 9007199254740991, "default": 100 },
+          { "key": "amount", "type": "string", "label": "Alvo (R$ para Donate)", "default": "", "pattern": "^\\s*(?:\\d+(?:[.,]\\d+)?|[.,]\\d+|\\d{1,3}(?:\\.\\d{3})+,\\d+)\\s*$" },
+          { "key": "target", "type": "number", "label": "Alvo anterior (centavos no Donate)", "min": 0, "max": 9007199254740991, "default": 0 },
           { "key": "order", "type": "number", "label": "Ordem", "required": true, "min": 1, "max": 500, "default": 1 }
         ]
       },

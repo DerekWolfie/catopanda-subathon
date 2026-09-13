@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 
-const PLUGIN_VERSION = "0.4.1";
+const PLUGIN_VERSION = "0.4.2";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_LEDGER_KEYS = 1000;
@@ -117,6 +117,29 @@ function normalizeConfig(raw) {
   };
 }
 
+// The editor uses text so both pt-BR commas and decimal points survive typing.
+// Keep cents inside the runtime: LivePix events and saved totals already use cents.
+function goalTarget(item, type) {
+  if (item.amount === undefined || item.amount === null || String(item.amount).trim() === "") {
+    return Math.round(asNumber(item.target, 0, 0, Number.MAX_SAFE_INTEGER));
+  }
+  const text = String(item.amount).trim();
+  if (text.length > 40 || !/^(?:\d+(?:[.,]\d+)?|[.,]\d+|\d{1,3}(?:\.\d{3})+,\d+)$/.test(text)) {
+    throw new Error("alvo inválido: use um valor como 52,01 ou 52.01");
+  }
+  const decimal = text.includes(",") ? text.replaceAll(".", "").replace(",", ".") : text;
+  if (type !== "donate") {
+    const count = Number(decimal);
+    if (!Number.isFinite(count) || count <= 0 || count > Number.MAX_SAFE_INTEGER) throw new Error("alvo fora do limite");
+    return count;
+  }
+  const [whole, fraction = ""] = decimal.split(".");
+  const cents = BigInt(whole || "0") * 100n + BigInt((fraction + "00").slice(0, 2))
+    + (Number(fraction[2] || "0") >= 5 ? 1n : 0n);
+  if (cents < 1n || cents > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("alvo fora do limite em reais");
+  return Number(cents);
+}
+
 function isDefaultGoalsTable(value) {
   return Array.isArray(value)
     && value.length === DEFAULT_GOALS.length
@@ -126,7 +149,7 @@ function isDefaultGoalsTable(value) {
         && goal.id === expected.id
         && goal.type === expected.type
         && goal.title === expected.title
-        && Number(goal.target) === expected.target
+        && goalTarget(goal, goal.type) === expected.target
         && Number(goal.order) === expected.order;
     });
 }
@@ -150,7 +173,7 @@ function parseGoals(config, log) {
       if (!CONTRIBUTION_TYPES.includes(type)) {
         throw new Error("tipo inválido na meta " + String(index + 1));
       }
-      const target = Math.round(asNumber(item.target, 0, 0, Number.MAX_SAFE_INTEGER));
+      const target = goalTarget(item, type);
       if (target <= 0) throw new Error("alvo inválido na meta " + String(index + 1));
       const id = asText(item.id, type + "-" + String(index + 1)).slice(0, 80);
       if (ids.has(id)) throw new Error("id duplicado: " + id);

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 — 2026-09-13
+
+- Metas de Donate recebem reais no campo Alvo: `52,01` ou `52.01` resulta em R$ 52,01.
+- Aceita decimais e valores agrupados em pt-BR (`1.234,56`); valores monetários são
+  convertidos para centavos com arredondamento decimal, sem erro de ponto flutuante.
+- Metas antigas mantêm o campo Alvo anterior, em centavos para Donate. O novo Alvo
+  tem prioridade quando preenchido. Salvar outras configurações não multiplica os valores.
+- Subs e Bits continuam em quantidade e aceitam alvos fracionados.
+- Preservados o cofre, cronômetro, totais, deduplicação e contratos dos blocos em centavos.
+- Testes de precisão, conclusão por centavo, configuração legada e reinício.
+- Rollback para 0.4.1 ignora o novo Alvo: atualize Alvo anterior antes de voltar
+  caso tenha alterado ou criado metas usando o campo em reais.
+
 ## 0.4.1 — 2026-09-12
 
 - Repositório independente em `DerekWolfie/catopanda-subathon`.

@@ -1,4 +1,4 @@
-# CatOPanda Subathon 0.4.1
+# CatOPanda Subathon 0.4.2
 
 Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
 `io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 1.2.0 (ZIP
@@ -80,8 +80,21 @@ que informa Prime, ou em um registro manual.
 
 ## Metas e efeitos
 
-Na aba **Metas**, cada linha recebe ID, tipo, título, alvo e ordem. Donate usa centavos
-(R$ 300 = 30000); Subs e Bits usam quantidade.
+Na aba **Metas**, preencha **Alvo (R$ para Donate)** em reais: `52,01` ou `52.01`
+equivale a **R$ 52,01**, e `300` equivale a R$ 300. Também aceita `1.234,56`.
+Subs e Bits usam quantidade, inclusive fracionada. Valores em reais com mais de duas
+casas são arredondados para o centavo mais próximo (`1,005` equivale a R$ 1,01).
+
+Nas metas já salvas, **Alvo anterior (centavos no Donate)** mantém o valor legado:
+`5201` continua sendo R$ 52,01. Para alterar, preencha o novo **Alvo**, que tem prioridade.
+Em metas novas, preencha Alvo e deixe Alvo anterior em `0`. ID, título e ordem não mudam.
+
+Os blocos de contribuição, os totais e os eventos do LivePix continuam usando centavos;
+os flows existentes não precisam de conversão adicional.
+
+Ao voltar para 0.4.1 ou anterior, o novo Alvo é ignorado: essas versões usam Alvo
+anterior. Antes de um rollback, preencha esse campo com o equivalente em centavos
+para Donate (ou quantidade para Subs/Bits) se tiver alterado ou criado metas.
 
 Na aba **Overlays**, a seção **Efeitos** liga o brilho e o movimento dos cartões, o
 confete ao concluir meta e o aviso de tempo adicionado, e escolhe o canto dos avisos no
