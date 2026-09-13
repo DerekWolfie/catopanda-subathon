@@ -6,7 +6,7 @@ LivePix e outros gatilhos por ações e fórmulas.
 
 | Contrato | Valor |
 | --- | --- |
-| Versão do plugin | 0.4.3 |
+| Versão do plugin | 0.4.4 |
 | OSC Flow Studio | `>=0.5.0 <0.6.0` |
 | Pacote | `io.github.osc-flow-studio.catopanda-subathon` |
 | ID de blocos e configurações | `catopanda-subathon` |
@@ -15,7 +15,7 @@ LivePix e outros gatilhos por ações e fórmulas.
 
 ## Instalação
 
-1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.3.zip` da release ou gere
+1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip` da release ou gere
    localmente. No Studio, abra **Integrações → Install from zip**, revise e confirme.
 2. Configure porta, conversões de tempo, metas, efeitos e tema; ative a integração.
 3. Importe os templates **Twitch pronta** e **acompanhar no console** conforme necessário.
@@ -29,7 +29,7 @@ Veja [blocos, regras e as sete URLs dos overlays](plugin/README.md).
 O LivePix é opcional: o CatOPanda também recebe contribuições por outros gatilhos.
 Nenhuma credencial de pagamento é necessária neste plugin.
 
-Na versão 0.4.3, **Metas → Alvo (R$ para Donate)** recebe reais: `52,01` ou `52.01`
+Na versão 0.4.4, **Metas → Alvo (R$ para Donate)** recebe reais: `52,01` ou `52.01`
 mostra **R$ 52,01**, e `52` significa R$ 52. Subs/Bits usam quantidade e também aceitam
 decimais. Nas metas antigas, **Alvo anterior** preserva o valor salvo em centavos;
 preencha o novo Alvo para alterar. Em metas novas, deixe Alvo anterior em `0`.
@@ -71,16 +71,16 @@ npm run catalog
 `npm run package` executa a validação do schema, as regras de pacote e os testes
 antes de gerar:
 
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.3.zip`
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.3.zip.sha256`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip.sha256`
 
 `npm run catalog` gera `dist/listing.json`, com tamanho e SHA-256 do ZIP real.
 O ZIP contém somente `plugin/`, incluindo os assets dos overlays, com o manifest
 na raiz. Os scripts de publicação e as dependências de desenvolvimento ficam fora.
 
 ```powershell
-Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.3.zip -Algorithm SHA256
-Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.3.zip.sha256
+Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip -Algorithm SHA256
+Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip.sha256
 ```
 
 Use `npm run check` para validar sem gerar artefatos. Para inspecionar os overlays
@@ -108,15 +108,15 @@ Primeiro envio, usando o `origin` já configurado:
 npm ci
 npm run package
 git add .
-git commit -m "Prepare CatOPanda Subathon 0.4.3 package"
+git commit -m "Prepare CatOPanda Subathon 0.4.4 package"
 git push -u origin main
 ```
 
 Aguarde **Validate plugin** passar no Windows e Linux. Depois publique a tag:
 
 ```powershell
-git tag v0.4.3
-git push origin v0.4.3
+git tag v0.4.4
+git push origin v0.4.4
 ```
 
 O workflow **Release OSC Flow Studio package** valida novamente, recupera o catálogo

@@ -512,6 +512,99 @@ test("version 0.1 goalsJson stays readable until the table is edited", async () 
   }
 });
 
+function manyGoals(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `custom-${index + 1}`, type: "donate", title: `Custom goal ${index + 1}`,
+    amount: `${index + 1},01`, target: 0, order: index + 1,
+  }));
+}
+
+for (const count of [20, 21, 50]) {
+  test(`${count} configured goals survive a restart and keep contributions`, async () => {
+    const goals = manyGoals(count);
+    const secrets = new Map();
+    const first = context({ goals }, secrets);
+    await plugin.activate(first.ctx);
+    try {
+      await first.actions.get("record-donate")({ amountCents: 101, eventKey: "many-goals" });
+      const state = await first.actions.get("get-state")({});
+      assert.deepEqual(state.goals.map((goal) => goal.id), goals.map((goal) => goal.id));
+      assert.equal(state.goals[0].completed, true);
+    } finally { await plugin.deactivate(); }
+    const reopened = context({ goals: JSON.parse(JSON.stringify(goals)) }, secrets);
+    await plugin.activate(reopened.ctx);
+    try {
+      const state = await reopened.actions.get("get-state")({});
+      assert.equal(state.goals.length, count);
+      assert.equal(state.totals.donateCents, 101);
+      assert.equal(state.goals.at(-1).target, count * 100 + 1);
+      assert.equal((await reopened.actions.get("record-donate")({ amountCents: 101, eventKey: "many-goals" })).accepted, false);
+    } finally { await plugin.deactivate(); }
+  });
+}
+
+for (const [problem, patch] of [
+  ["duplicate ID", { id: "custom-1" }],
+  ["empty target", { amount: "", target: 0 }],
+  ["invalid decimal", { amount: "abc" }],
+  ["invalid type", { type: "unknown" }],
+]) {
+  test(`an invalid 21st goal (${problem}) preserves the other goals and can be corrected`, async () => {
+    const goals = manyGoals(22);
+    goals[20] = { ...goals[20], ...patch };
+    const original = structuredClone(goals);
+    const secrets = new Map();
+    const fixture = context({ goals }, secrets);
+    await plugin.activate(fixture.ctx);
+    try {
+      const state = await fixture.actions.get("get-state")({});
+      assert.deepEqual(state.goals.map((goal) => goal.id), manyGoals(22).filter((_, index) => index !== 20).map((goal) => goal.id));
+      assert.equal(state.goalErrors.length, 1);
+      assert.match(state.goalErrors[0], /21/);
+      assert.equal(fixture.statuses.at(-1).health, "degraded");
+      assert.deepEqual(fixture.statuses.at(-1).errors, state.goalErrors);
+      assert.deepEqual(goals, original, "invalid rows stay in the saved config for correction");
+      await fixture.actions.get("record-donate")({ amountCents: 101, eventKey: "invalid-row" });
+    } finally { await plugin.deactivate(); }
+    const corrected = context({ goals: manyGoals(22), brbTitle: "Updated title" }, secrets);
+    await plugin.activate(corrected.ctx);
+    try {
+      const state = await corrected.actions.get("get-state")({});
+      assert.equal(state.goals.length, 22);
+      assert.deepEqual(state.goalErrors, []);
+      assert.equal(state.totals.donateCents, 101);
+      assert.equal(state.display.copy.title, "Updated title");
+      assert.equal(corrected.statuses.at(-1).health, "healthy");
+    } finally { await plugin.deactivate(); }
+  });
+}
+
+test("empty or malformed goal lists never restore sample goals", async () => {
+  for (const config of [{ goals: [] }, { goals: [null] }, { goals: "broken" }, { goalsJson: "{" }]) {
+    const fixture = context(config);
+    await plugin.activate(fixture.ctx);
+    try {
+      const state = await fixture.actions.get("get-state")({});
+      assert.equal(state.goals.length, 0);
+      assert.equal(state.currentGoal, null);
+      assert.equal(state.nextGoal, null);
+      assert.ok(Number.isFinite(state.score.donate.progress));
+    } finally { await plugin.deactivate(); }
+  }
+});
+
+test("an invalid edit to the default table cannot reactivate legacy goals", async () => {
+  const goals = structuredClone(manifest.configSchema.fields.find((field) => field.key === "goals").default);
+  goals[0].amount = "invalid";
+  const fixture = context({ goals, goalsJson: JSON.stringify(manyGoals(21)) });
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    assert.deepEqual(state.goals.map((goal) => goal.id), goals.slice(1).map((goal) => goal.id));
+    assert.equal(state.goalErrors.length, 1);
+  } finally { await plugin.deactivate(); }
+});
+
 test("the font route only serves local font files", async () => {
   const fixture = context({ fontSource: "C:\\Windows\\System32\\drivers\\etc\\hosts", fontFamily: "Any" });
   await plugin.activate(fixture.ctx);

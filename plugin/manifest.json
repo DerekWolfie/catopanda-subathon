@@ -2,7 +2,7 @@
   "$schema": "../sdk/community-plugin-manifest.schema.json",
   "id": "catopanda-subathon",
   "name": "CatOPanda Subathon",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "packageId": "io.github.osc-flow-studio.catopanda-subathon",
   "engines": { "oscFlowStudio": ">=0.5.0 <0.6.0" },
   "author": { "name": "DerekWolfie", "url": "https://github.com/DerekWolfie" },
@@ -183,7 +183,7 @@
           { "id": "bits-10000", "type": "bits", "title": "Desafio escolhido ao vivo", "amount": "10000", "target": 0, "order": 6 }
         ],
         "itemFields": [
-          { "key": "id", "type": "string", "label": "ID", "required": true, "pattern": "^[a-z0-9][a-z0-9-]{0,79}$" },
+          { "key": "id", "type": "string", "label": "ID", "required": true, "unique": true, "pattern": "^[a-z0-9][a-z0-9-]{0,79}$" },
           {
             "key": "type",
             "type": "select",
@@ -560,6 +560,7 @@
         { "path": "currentGoal.title", "type": "string", "description": "Título da meta atual." },
         { "path": "currentGoal.progress", "type": "number", "description": "Progresso da meta atual em porcentagem." },
         { "path": "goals", "type": "array", "description": "Metas calculadas." },
+        { "path": "goalErrors", "type": "array", "description": "Linhas de metas que precisam de corre??o na configura??o." },
         { "path": "urls", "type": "object", "description": "URLs para Browser Source do OBS, inclusive urls.alerts." }
       ]
     },

@@ -226,6 +226,10 @@
                       "items": {
                         "$ref": "#/properties/configSchema/properties/fields/items/properties/options/items"
                       }
+                    },
+                    "unique": {
+                      "type": "boolean",
+                      "description": "Reject repeated nonempty values in this column. Strings compare after trimming."
                     }
                   },
                   "required": [

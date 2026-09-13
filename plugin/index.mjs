@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 
-const PLUGIN_VERSION = "0.4.3";
+const PLUGIN_VERSION = "0.4.4";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_LEDGER_KEYS = 1000;
@@ -87,7 +87,7 @@ function normalizeConfig(raw) {
     subTier3Seconds: asNumber(raw.subTier3Seconds, 3000, 0, 604800),
     subPrimeSeconds: asNumber(raw.subPrimeSeconds, 600, 0, 604800),
     warningThresholds: normalizeWarnings(raw.warningThresholds),
-    goals: Array.isArray(raw.goals) ? raw.goals : null,
+    goals: raw.goals ?? null,
     legacyGoalsJson: typeof raw.goalsJson === "string" ? raw.goalsJson : "",
     maxTotemGoals: Math.round(asNumber(raw.maxTotemGoals, 3, 1, 8)),
     brbTransparent: raw.brbTransparent === true,
@@ -141,7 +141,8 @@ function goalTarget(item, type) {
 }
 
 function isDefaultGoalsTable(value) {
-  return Array.isArray(value)
+  try {
+    return Array.isArray(value)
     && value.length === DEFAULT_GOALS.length
     && value.every((goal, index) => {
       const expected = DEFAULT_GOALS[index];
@@ -152,11 +153,20 @@ function isDefaultGoalsTable(value) {
         && goalTarget(goal, goal.type) === expected.target
         && Number(goal.order) === expected.order;
     });
+  } catch {
+    // An edited invalid target is not an untouched default table.
+    return false;
+  }
 }
 
 function parseGoals(config, log) {
+  const errors = [];
+  const report = (message) => {
+    errors.push(message);
+    log.warn(message);
+  };
+  let parsed = config.goals;
   try {
-    let parsed = config.goals;
     // Version 0.1 stored the goals as JSON text. Keep reading it until the
     // user touches the table, so an upgrade never drops a configured ladder.
     if (
@@ -167,8 +177,14 @@ function parseGoals(config, log) {
     }
     parsed ??= DEFAULT_GOALS;
     if (!Array.isArray(parsed)) throw new Error("o valor precisa ser uma lista");
-    const ids = new Set();
-    const goals = parsed.map((item, index) => {
+  } catch (error) {
+    report("Configuração de metas inválida: " + describe(error) + ". Corrija a lista na aba Metas; os dados salvos foram mantidos.");
+    return { goals: [], errors };
+  }
+  const ids = new Set();
+  const goals = [];
+  for (const [index, item] of parsed.entries()) {
+    try {
       const type = String(item && item.type ? item.type : "").toLowerCase();
       if (!CONTRIBUTION_TYPES.includes(type)) {
         throw new Error("tipo inválido na meta " + String(index + 1));
@@ -178,20 +194,20 @@ function parseGoals(config, log) {
       const id = asText(item.id, type + "-" + String(index + 1)).slice(0, 80);
       if (ids.has(id)) throw new Error("id duplicado: " + id);
       ids.add(id);
-      return {
+      goals.push({
         id,
         type,
         title: asText(item.title, "Meta " + String(index + 1)).slice(0, 160),
         target,
         order: asNumber(item.order, index + 1, -100000, 100000),
-      };
-    });
-    if (goals.length === 0) throw new Error("configure ao menos uma meta");
-    return goals.sort((a, b) => a.order - b.order);
-  } catch (error) {
-    log.warn("configuração de metas inválida; usando metas padrão: " + describe(error));
-    return DEFAULT_GOALS.map((goal) => ({ ...goal }));
+      });
+    } catch (error) {
+      // A bad row must never replace the user's entire ladder with sample goals.
+      report("Meta " + String(index + 1) + ": " + describe(error)
+        + ". Corrija esta linha na aba Metas; as outras metas continuam funcionando.");
+    }
   }
+  return { goals: goals.sort((a, b) => a.order - b.order), errors };
 }
 
 function initialState(config) {
@@ -379,6 +395,7 @@ function snapshot(runtime) {
       bits: runtime.state.totals.bits,
     },
     goals,
+    goalErrors: runtime.goalErrors,
     completedGoals: goals.filter((goal) => goal.completed).length,
     currentGoal,
     nextGoal,
@@ -913,6 +930,7 @@ async function bindServer(runtime) {
         "Não foi possível abrir a porta " + String(runtime.config.port)
         + " em 127.0.0.1. Feche o programa que a está usando ou escolha outra porta na aba Geral."
         + " O cronômetro, as metas e os blocos continuam funcionando.",
+        ...runtime.goalErrors,
       ],
     });
     scheduleBind(runtime);
@@ -928,8 +946,9 @@ async function bindServer(runtime) {
   runtime.port = address && typeof address === "object" ? address.port : runtime.config.port;
   runtime.ctx.log.info("overlays prontos em http://127.0.0.1:" + String(runtime.port));
   runtime.ctx.setStatus({
-    health: "healthy",
+    health: runtime.goalErrors.length ? "degraded" : "healthy",
     connectionState: "overlays em 127.0.0.1:" + String(runtime.port),
+    errors: runtime.goalErrors,
   });
   emitState(runtime);
   return true;
@@ -1018,10 +1037,12 @@ export default {
     } catch {
       persisted = null;
     }
+    const parsedGoals = parseGoals(config, ctx.log);
     const runtime = {
       ctx,
       config,
-      goals: parseGoals(config, ctx.log),
+      goals: parsedGoals.goals,
+      goalErrors: parsedGoals.errors,
       state: hydrateState(persisted, config, ctx.log),
       clients: new Set(),
       sockets: new Set(),

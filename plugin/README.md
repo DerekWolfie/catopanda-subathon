@@ -1,4 +1,4 @@
-# CatOPanda Subathon 0.4.3
+# CatOPanda Subathon 0.4.4
 
 Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
 `io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 1.2.0 (ZIP
@@ -84,6 +84,24 @@ de Sub oferecem o tier **Prime**. Uma ressalva honesta: o EventSub da Twitch ent
 Sub Prime como Tier 1 e não diz que é Prime, então o template automático conta Prime como
 Tier 1. O tier Prime vale quando você escolhe no bloco, quando a fórmula vem de uma fonte
 que informa Prime, ou em um registro manual.
+
+## Goal validation and recovery
+
+The configuration supports up to 50 goals. The ID column declares `unique: true`.
+A Studio build with unique-column validation highlights conflicting IDs and blocks
+saving until they are corrected. Older Studio builds do not provide this form
+validation; the plugin still preserves valid goals when it encounters duplicates. Each goal needs a unique ID and a
+positive target. A blank Alvo uses the legacy Alvo anterior value; if both are
+empty or zero, that row is invalid.
+
+Version 0.4.4 keeps the other valid goals active and reports the invalid row number
+in the plugin status and `goalErrors` returned by the state action and HTTP API.
+The invalid row remains in the configuration for correction. Fix its ID or target
+and save again. Contributions and the timer are preserved. The plugin no longer
+substitutes sample goals when a configured row is invalid.
+
+If an older version displays sample goals after a save, preserve your configuration
+before editing it. Updating does not reconstruct goals that were already overwritten.
 
 ## Metas e efeitos
 

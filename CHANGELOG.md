@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.4 (2026-09-13)
+
+- Declare goal IDs unique for Studio form and backend validation. Update the bundled
+  manifest schema for the unique-column contract.
+
+- Keep valid configured goals when another row has a duplicate ID, an empty target,
+  or an invalid value. Never replace an invalid list with sample goals.
+- Report the affected row through the plugin status and `goalErrors` in the state
+  response. Keep invalid rows in the saved configuration so they can be corrected.
+- Keep an explicitly empty goal list empty. Preserve valid legacy goal migration.
+- Verify 20, 21, and 50 goals, restart persistence, contributions, and recovery after
+  correcting an invalid row. The supported configuration limit remains 50 goals.
+
 ## 0.4.3 (2026-09-13)
 
 - Keep the goals footer in one fixed-height row at the bottom of the overlay.
