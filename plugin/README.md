@@ -56,6 +56,9 @@ manuais em **controlar cronômetro** não entram na conta. O mesmo valor sai em
 versões anteriores começam em zero; para corrigir, use **definir total** com o tipo
 **Tempo adicionado (segundos)**.
 
+Os overlays consultam `/api/poll` uma vez por segundo, sem manter conexão aberta. Por isso
+qualquer quantidade de Browser Sources carrega ao mesmo tempo no OBS.
+
 `?transparent=1` força fundo transparente e `?transparent=0` força o fundo configurado.
 `?scale=0.85` ajusta a escala daquela fonte sem alterar a configuração global.
 
