@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Count the time contributions add to the timer. The total is persisted, zeroed by the
+  totals reset, correctable through "definir total" with the new "Tempo adicionado"
+  type, and exposed as `totals.addedSeconds` / `totals.addedLabel` in the state and as
+  `totalAddedSeconds` / `totalAddedLabel` on the contribution trigger. Manual timer
+  adjustments are not counted.
+- Show "Foi adicionado um total de X na live" in the triple scoreboard and as a fixed
+  block at the start of the goals footer.
+- Leave a category out of the triple scoreboard when it has no configured goal, and
+  center the remaining cards. `score.<type>.hasGoals` reports it.
+
 ## 0.4.4 (2026-09-13)
 
 - Declare goal IDs unique for Studio form and backend validation. Update the bundled

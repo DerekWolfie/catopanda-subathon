@@ -44,6 +44,18 @@ the track. With effects disabled or reduced motion enabled, scroll manually in
 OBS Browser Source Interact. The footer also supports short browser sources
 (for example, 1920 ? 180) without wrapping goals into extra rows.
 
+O **Placar triplo** mostra apenas as categorias (Donate, Subs, Bits) que têm pelo menos uma
+meta configurada; os cards restantes ficam centralizados. Uma contribuição de uma categoria
+sem meta continua somando tempo e total, só não ganha card.
+
+O **Placar triplo** e o **Rodapé de metas** mostram "Foi adicionado um total de X na live":
+o tempo que as contribuições somaram ao cronômetro desde o último "zerar estado". Ajustes
+manuais em **controlar cronômetro** não entram na conta. O mesmo valor sai em
+`totals.addedSeconds` e `totals.addedLabel` no bloco **ler estado** e em
+`metadata.totalAddedSeconds` no gatilho **contribuição registrada**. Estados salvos por
+versões anteriores começam em zero; para corrigir, use **definir total** com o tipo
+**Tempo adicionado (segundos)**.
+
 `?transparent=1` força fundo transparente e `?transparent=0` força o fundo configurado.
 `?scale=0.85` ajusta a escala daquela fonte sem alterar a configuração global.
 
@@ -66,7 +78,7 @@ no editor ou escreva `{{ $trigger.metadata.bits }}` direto.
 | registrar Sub | Soma Subs e converte em tempo pelo tier: 1, 2, 3 ou Prime. |
 | registrar contribuição | Bloco genérico com tipo por fórmula, para ligar qualquer plataforma. |
 | controlar cronômetro | Pausar, retomar, alternar, adicionar, subtrair, definir ou restaurar. |
-| definir total | Corrige um total sem mexer no cronômetro. |
+| definir total | Corrige um total, ou o tempo adicionado, sem mexer no cronômetro. |
 | zerar estado | Zera totais, cronômetro, deduplicação ou tudo. |
 | ler estado | Cronômetro, totais, metas e URLs. |
 | contribuição registrada | Gatilho. Filtra por tipo e valor mínimo. |

@@ -542,7 +542,7 @@ body.is-ready {
   bottom: 1.2cqw;
   height: min(clamp(96px, 8.4cqw, 162px), calc(100% - 2.4cqw));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(64px, 8cqw, 154px);
+  grid-template-columns: auto minmax(0, 1fr) clamp(64px, 8cqw, 154px);
   align-items: stretch;
   gap: 1cqw;
   padding: clamp(8px, 0.8cqw, 16px);
@@ -553,6 +553,31 @@ body.is-ready {
 
 .goals-footer__panel::before {
   display: none;
+}
+
+/* Fixed at the start of the row, so the scrolling goals never carry it away. */
+.footer-added {
+  min-width: 0;
+  max-width: clamp(130px, 13cqw, 250px);
+  display: grid;
+  align-content: center;
+  gap: 0.15cqw;
+  margin: 0;
+  padding: 0 clamp(10px, 0.9cqw, 18px);
+  border-right: 1px solid var(--glass-border);
+  color: #ebdff8;
+  font-size: clamp(10px, 0.8cqw, 15px);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.footer-added > strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(18px, 1.7cqw, 32px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .goals-footer__viewport {
@@ -931,14 +956,46 @@ body.is-ready {
 }
 
 /* Placar triplo */
-.scoreboard {
+.scoreboard-dock {
   position: absolute;
   left: 1.2cqw;
   right: 1.2cqw;
   bottom: 3.2cqw;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-items: center;
+  gap: 1cqw;
+}
+
+.scoreboard-added {
+  margin: 0;
+  padding: 0.7cqw 1.6cqw;
+  border-radius: 999px;
+  color: #ebdff8;
+  font-size: clamp(13px, 1.15cqw, 22px);
+  font-weight: 800;
+  text-align: center;
+  --glass-bg: rgba(26, 13, 47, 0.84);
+}
+
+.scoreboard-added strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.3em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A category without goals is left out; the rest keep the three-column width, centered. */
+.scoreboard {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(var(--score-columns, 3), minmax(0, calc((100% - 2.5cqw) / 3)));
+  justify-content: center;
   gap: 1.25cqw;
+}
+
+.scoreboard[hidden] {
+  display: none;
 }
 
 .score-card {

@@ -265,9 +265,13 @@
   function renderScoreboard(score) {
     const board = document.querySelector("[data-scoreboard]");
     if (!board) return;
-    if (unchanged(board, JSON.stringify(["donate", "subs", "bits"].map((type) => [score[type].currentLabel, score[type].progress])))) return;
+    // A category with no goal configured has nothing to fill, so it is not shown.
+    const types = ["donate", "subs", "bits"].filter((type) => score[type].hasGoals !== false);
+    if (unchanged(board, JSON.stringify(types.map((type) => [type, score[type].currentLabel, score[type].progress])))) return;
     board.replaceChildren();
-    for (const type of ["donate", "subs", "bits"]) {
+    board.hidden = types.length === 0;
+    board.style.setProperty("--score-columns", String(Math.max(1, types.length)));
+    for (const type of types) {
       const item = score[type];
       const card = append(board, "article", "score-card glass-card score-card--" + type + " goal--" + type);
       card.dataset.scoreType = type;
@@ -318,6 +322,7 @@
       ? "Último apoio: " + state.lastSupport.actorName + " · +" + formatAddedTime(state.lastSupport.secondsAdded)
       : "À espera do próximo apoio";
     setText("[data-last-support]", lastSupport);
+    setText("[data-added-total]", state.totals.addedLabel || "0min");
 
     const copy = state.display.copy;
     setText('[data-copy="eyebrow"]', copy.eyebrow);

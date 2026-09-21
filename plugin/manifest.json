@@ -497,7 +497,7 @@
       "type": "action.x.catopanda-subathon.set-total",
       "label": "CatOPanda: definir total",
       "category": "CatOPanda Subathon",
-      "description": "Corrige manualmente um total de Donate, Subs ou Bits sem alterar o cronômetro.",
+      "description": "Corrige manualmente um total de Donate, Subs, Bits ou o tempo adicionado sem alterar o cronômetro.",
       "role": "action",
       "fields": [
         {
@@ -507,7 +507,8 @@
           "options": [
             { "value": "donate", "label": "Donate (centavos)" },
             { "value": "subs", "label": "Subs" },
-            { "value": "bits", "label": "Bits" }
+            { "value": "bits", "label": "Bits" },
+            { "value": "added-time", "label": "Tempo adicionado (segundos)" }
           ]
         },
         { "key": "value", "label": "Novo total", "kind": "number", "min": 0 }
@@ -557,6 +558,8 @@
         { "path": "totals.donate", "type": "number", "description": "Donate em centavos." },
         { "path": "totals.subs", "type": "number", "description": "Quantidade de Subs." },
         { "path": "totals.bits", "type": "number", "description": "Quantidade de Bits." },
+        { "path": "totals.addedSeconds", "type": "number", "description": "Tempo somado ao cronômetro pelas contribuições, em segundos." },
+        { "path": "totals.addedLabel", "type": "string", "description": "Tempo somado pelas contribuições, por exemplo 12h 05min." },
         { "path": "currentGoal.title", "type": "string", "description": "Título da meta atual." },
         { "path": "currentGoal.progress", "type": "number", "description": "Progresso da meta atual em porcentagem." },
         { "path": "goals", "type": "array", "description": "Metas calculadas." },
@@ -597,6 +600,8 @@
         { "path": "metadata.addedLabel", "type": "string", "description": "Tempo acrescentado em hh:mm:ss." },
         { "path": "metadata.total", "type": "number", "description": "Novo total do tipo." },
         { "path": "metadata.remainingSeconds", "type": "number", "description": "Tempo restante após a contribuição." },
+        { "path": "metadata.totalAddedSeconds", "type": "number", "description": "Tempo somado por todas as contribuições até agora, em segundos." },
+        { "path": "metadata.totalAddedLabel", "type": "string", "description": "Tempo somado até agora, por exemplo 12h 05min." },
         { "path": "metadata.source", "type": "string", "description": "Origem informada pelo bloco de registro." },
         { "path": "metadata.tier", "type": "string", "description": "Tier da Sub: 1000, 2000, 3000 ou prime." },
         { "path": "actorDisplayName", "type": "string", "description": "Nome do apoiador." }
@@ -668,7 +673,8 @@
         { "path": "metadata.formatted", "type": "string", "description": "Sempre 00:00:00." },
         { "path": "metadata.totals.donate", "type": "number", "description": "Donate final em centavos." },
         { "path": "metadata.totals.subs", "type": "number", "description": "Subs finais." },
-        { "path": "metadata.totals.bits", "type": "number", "description": "Bits finais." }
+        { "path": "metadata.totals.bits", "type": "number", "description": "Bits finais." },
+        { "path": "metadata.totals.addedSeconds", "type": "number", "description": "Tempo total somado pelas contribuições, em segundos." }
       ]
     }
   ],

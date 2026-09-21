@@ -222,7 +222,7 @@ function initialState(config) {
       finishedAt: "",
       warningsFired: [],
     },
-    totals: { donateCents: 0, subs: 0, bits: 0 },
+    totals: { donateCents: 0, subs: 0, bits: 0, addedSeconds: 0 },
     ledger: [],
     lastSupport: null,
     history: [],
@@ -250,6 +250,8 @@ function hydrateState(raw, config, log) {
     next.totals.donateCents = Math.max(0, Math.round(Number(totals.donateCents) || 0));
     next.totals.subs = Math.max(0, Math.round(Number(totals.subs) || 0));
     next.totals.bits = Math.max(0, Math.round(Number(totals.bits) || 0));
+    // State saved by earlier versions has no counter: it starts at zero, and "definir total" can correct it.
+    next.totals.addedSeconds = Math.max(0, Math.round(Number(totals.addedSeconds) || 0));
     next.ledger = Array.isArray(parsed.ledger)
       ? parsed.ledger.filter((key) => typeof key === "string").slice(-MAX_LEDGER_KEYS)
       : [];
@@ -284,6 +286,17 @@ function formatTime(totalSeconds) {
   const minutes = Math.floor((safe % 3600) / 60);
   const seconds = safe % 60;
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+/** "12h 05min", "5min 30s" or "45s": reads as a sentence on stream, unlike hh:mm:ss. */
+function formatDuration(totalSeconds) {
+  const safe = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  if (hours > 0) return String(hours) + "h " + String(minutes).padStart(2, "0") + "min";
+  if (minutes > 0) return String(minutes) + "min" + (seconds ? " " + String(seconds).padStart(2, "0") + "s" : "");
+  return seconds ? String(seconds) + "s" : "0min";
 }
 
 function currentForType(state, type) {
@@ -365,6 +378,7 @@ function snapshot(runtime) {
     const current = currentForType(runtime.state, type);
     const target = targetForType(runtime, type);
     score[type] = {
+      hasGoals: runtime.goals.some((goal) => goal.type === type),
       current,
       target,
       progress: Math.min(100, Math.max(0, Math.round((current / target) * 100))),
@@ -393,6 +407,8 @@ function snapshot(runtime) {
       donateCents: runtime.state.totals.donateCents,
       subs: runtime.state.totals.subs,
       bits: runtime.state.totals.bits,
+      addedSeconds: runtime.state.totals.addedSeconds,
+      addedLabel: formatDuration(runtime.state.totals.addedSeconds),
     },
     goals,
     goalErrors: runtime.goalErrors,
@@ -560,6 +576,8 @@ async function recordContribution(runtime, input) {
       MAX_TIMER_SECONDS,
       runtime.state.timer.remainingSeconds + secondsAdded,
     );
+    // Only supporter time counts; operator adjustments in "controlar cronômetro" do not.
+    runtime.state.totals.addedSeconds += secondsAdded;
     runtime.state.timer.anchorAt = Date.now();
     if (wasAtZero && secondsAdded > 0) runtime.state.timer.running = true;
     if (secondsAdded > 0) {
@@ -604,6 +622,8 @@ async function recordContribution(runtime, input) {
       addedLabel: support.addedLabel,
       total,
       remainingSeconds: timerAfter.remainingSeconds,
+      totalAddedSeconds: runtime.state.totals.addedSeconds,
+      totalAddedLabel: formatDuration(runtime.state.totals.addedSeconds),
       eventKey,
       source,
       tier,
@@ -670,9 +690,17 @@ async function controlTimer(runtime, input) {
 
 async function setTotal(runtime, input) {
   return queueMutation(runtime, async () => {
-    const type = normalizeType(input.contributionType ?? input.type);
-    if (!type) throw new Error("tipo de total inválido");
+    const rawType = input.contributionType ?? input.type;
     const value = Math.max(0, Math.round(Number(input.value) || 0));
+    if (asText(rawType, "").toLowerCase() === "added-time") {
+      runtime.state.totals.addedSeconds = value;
+      runtime.state.revision += 1;
+      await persist(runtime);
+      emitState(runtime);
+      return { type: "added-time", total: value, timerChanged: false };
+    }
+    const type = normalizeType(rawType);
+    if (!type) throw new Error("tipo de total inválido");
     const beforeGoals = calculatedGoals(runtime);
     if (type === "donate") runtime.state.totals.donateCents = value;
     if (type === "subs") runtime.state.totals.subs = value;
@@ -693,7 +721,7 @@ async function resetState(runtime, input) {
     if (!["totals", "timer", "ledger", "all"].includes(scope)) throw new Error("escopo inválido: " + scope);
     if (scope === "all") runtime.state = initialState(runtime.config);
     if (scope === "totals") {
-      runtime.state.totals = { donateCents: 0, subs: 0, bits: 0 };
+      runtime.state.totals = { donateCents: 0, subs: 0, bits: 0, addedSeconds: 0 };
       runtime.state.lastSupport = null;
       runtime.state.history = [];
     }
@@ -739,6 +767,7 @@ async function handleTimerTick(runtime) {
           donate: runtime.state.totals.donateCents,
           subs: runtime.state.totals.subs,
           bits: runtime.state.totals.bits,
+          addedSeconds: runtime.state.totals.addedSeconds,
         },
       };
       broadcast(runtime, "timer-finished", payload);

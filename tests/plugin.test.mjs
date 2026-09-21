@@ -217,6 +217,87 @@ test("state, contributions, goals, routes and persistence", async () => {
   }
 });
 
+test("added time counts supporter seconds only and survives a restart", async () => {
+  const secrets = new Map();
+  const first = context({}, secrets);
+  await plugin.activate(first.ctx);
+  try {
+    const initial = await first.actions.get("get-state")({});
+    assert.equal(initial.totals.addedSeconds, 0);
+    assert.equal(initial.totals.addedLabel, "0min");
+
+    await first.actions.get("record-donate")({ amountCents: 1000, eventKey: "added-1" });
+    await first.actions.get("record-donate")({ amountCents: 1000, eventKey: "added-1" });
+    await first.actions.get("record-bits")({ bits: 150, eventKey: "added-2" });
+    await first.actions.get("record-sub")({ count: 2, tier: "2000", eventKey: "added-3" });
+    await first.actions.get("timer-control")({ operation: "add", seconds: 5000 });
+    await first.actions.get("timer-control")({ operation: "subtract", seconds: 100 });
+
+    const state = await first.actions.get("get-state")({});
+    // 600 (R$ 10) + 90 (150 Bits) + 2400 (two Tier 2 subs); the duplicate and the manual add do not count.
+    assert.equal(state.totals.addedSeconds, 3090);
+    assert.equal(state.totals.addedLabel, "51min 30s");
+    const lastContribution = first.triggers.filter((event) => event.name === "contribution").at(-1);
+    assert.equal(lastContribution.payload.totalAddedSeconds, 3090);
+    assert.equal(lastContribution.payload.totalAddedLabel, "51min 30s");
+  } finally {
+    await plugin.deactivate();
+  }
+
+  const second = context({}, secrets);
+  await plugin.activate(second.ctx);
+  try {
+    assert.equal((await second.actions.get("get-state")({})).totals.addedSeconds, 3090);
+    const before = await second.actions.get("get-state")({});
+    const corrected = await second.actions.get("set-total")({ contributionType: "added-time", value: 43500 });
+    assert.deepEqual(corrected, { type: "added-time", total: 43500, timerChanged: false });
+    const after = await second.actions.get("get-state")({});
+    assert.equal(after.totals.addedLabel, "12h 05min");
+    assert.equal(after.timer.remainingSeconds, before.timer.remainingSeconds);
+    await second.actions.get("reset-state")({ scope: "totals" });
+    assert.equal((await second.actions.get("get-state")({})).totals.addedSeconds, 0);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("state saved before the added-time counter hydrates it as zero", async () => {
+  const secrets = new Map([["catopanda-subathon-state-v1", JSON.stringify({
+    revision: 4,
+    timer: { remainingSeconds: 900, running: false },
+    totals: { donateCents: 500, subs: 1, bits: 0 },
+  })]]);
+  const fixture = context({}, secrets);
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    assert.equal(state.totals.donateCents, 500);
+    assert.equal(state.totals.addedSeconds, 0);
+    assert.equal(state.totals.addedLabel, "0min");
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("score marks categories without goals so the overlays can leave them out", async () => {
+  const fixture = context({
+    goals: [{ id: "donate-50", type: "donate", title: "Meta", amount: "50", order: 1 }],
+  });
+  await plugin.activate(fixture.ctx);
+  try {
+    await fixture.actions.get("record-bits")({ bits: 500, eventKey: "no-goal-bits" });
+    const state = await fixture.actions.get("get-state")({});
+    assert.equal(state.score.donate.hasGoals, true);
+    assert.equal(state.score.subs.hasGoals, false);
+    assert.equal(state.score.bits.hasGoals, false);
+    // Time from a category without goals still reaches the timer and the counter.
+    assert.equal(state.totals.bits, 500);
+    assert.equal(state.totals.addedSeconds, 300);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
 test("SSE stream carries state plus contribution and goal events", async () => {
   const fixture = context({});
   await plugin.activate(fixture.ctx);
