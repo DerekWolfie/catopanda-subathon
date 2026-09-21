@@ -298,6 +298,36 @@ test("score marks categories without goals so the overlays can leave them out", 
   }
 });
 
+test("poll delivers each overlay event once and never replays on a fresh cursor", async () => {
+  const fixture = context({
+    goals: [{ id: "donate-10", type: "donate", title: "Meta", amount: "10", order: 1 }],
+  });
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    const base = new URL(state.urls.brbStage).origin;
+    const poll = async (query = "") => (await fetch(base + "/api/poll" + query)).json();
+
+    const first = await poll();
+    assert.equal(first.seq, 0);
+    assert.deepEqual(first.events, []);
+    assert.equal(first.state.timer.formatted, state.timer.formatted);
+
+    await fixture.actions.get("record-donate")({ amountCents: 1000, eventKey: "poll-1", actorName: "Luna" });
+    const second = await poll("?since=" + String(first.seq));
+    assert.deepEqual(second.events.map((event) => event.name), ["contribution", "goal-completed"]);
+    assert.equal(second.events[0].payload.actorName, "Luna");
+    assert.equal(second.state.totals.donate, 1000);
+
+    assert.deepEqual((await poll("?since=" + String(second.seq))).events, []);
+    // A reloaded Browser Source has no cursor, and one from before a restart is ahead of the server.
+    assert.deepEqual((await poll()).events, []);
+    assert.deepEqual((await poll("?since=999")).events, []);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
 test("SSE stream carries state plus contribution and goal events", async () => {
   const fixture = context({});
   await plugin.activate(fixture.ctx);

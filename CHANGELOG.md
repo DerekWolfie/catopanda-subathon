@@ -11,6 +11,11 @@
   block at the start of the goals footer.
 - Leave a category out of the triple scoreboard when it has no configured goal, and
   center the remaining cards. `score.<type>.hasGoals` reports it.
+- Fix overlays that stayed blank and loading forever, mostly in OBS. Every overlay held
+  an SSE stream open, and Chromium (including the browser inside OBS) allows six
+  connections per host, so the seventh Browser Source never loaded. Overlays now poll
+  `/api/poll` once a second with an event cursor: each alert is delivered once, and a
+  reloaded source never replays one. `/events` stays available for external readers.
 
 ## 0.4.4 (2026-09-13)
 

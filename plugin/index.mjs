@@ -15,6 +15,7 @@ const PLUGIN_VERSION = "0.4.4";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_LEDGER_KEYS = 1000;
+const MAX_RECENT_EVENTS = 50;
 const MAX_TIMER_SECONDS = 31_536_000;
 const CONTRIBUTION_TYPES = ["donate", "subs", "bits"];
 const FONT_EXTENSIONS = new Set([".woff", ".woff2", ".ttf", ".otf"]);
@@ -457,7 +458,30 @@ async function persist(runtime) {
   }
 }
 
+/**
+ * Overlays poll /api/poll instead of holding an SSE stream. Chromium (and the
+ * CEF inside OBS) allows six HTTP/1.1 connections per host, so six open streams
+ * left every further Browser Source loading forever. Events are kept in a short
+ * numbered buffer so a poll delivers each one exactly once.
+ */
+function recordEvent(runtime, eventName, payload) {
+  runtime.eventSeq += 1;
+  runtime.recentEvents.push({ seq: runtime.eventSeq, name: eventName, payload });
+  if (runtime.recentEvents.length > MAX_RECENT_EVENTS) runtime.recentEvents.shift();
+}
+
+function pollResponse(runtime, sinceText) {
+  const since = Number(sinceText);
+  // No cursor, or one from before a restart: start from now and replay nothing,
+  // so reloading a Browser Source never repeats an alert.
+  const events = sinceText === null || !Number.isInteger(since) || since < 0 || since > runtime.eventSeq
+    ? []
+    : runtime.recentEvents.filter((event) => event.seq > since);
+  return { seq: runtime.eventSeq, state: snapshot(runtime), events };
+}
+
 function broadcast(runtime, eventName, payload) {
+  if (eventName !== "state") recordEvent(runtime, eventName, payload);
   if (runtime.clients.size === 0) return;
   const message = "event: " + eventName + "\ndata: " + JSON.stringify(payload) + "\n\n";
   for (const client of runtime.clients) {
@@ -865,6 +889,11 @@ async function handleRequest(runtime, req, res) {
     sendJson(res, 200, snapshot(runtime));
     return;
   }
+  if (url.pathname === "/api/poll") {
+    sendJson(res, 200, pollResponse(runtime, url.searchParams.get("since")));
+    return;
+  }
+  // Kept for external readers; the bundled overlays poll /api/poll instead.
   if (url.pathname === "/events") {
     res.writeHead(200, {
       ...commonHeaders("text/event-stream; charset=utf-8"),
@@ -1084,6 +1113,8 @@ export default {
       stopped: false,
       queue: Promise.resolve(),
       port: config.port,
+      eventSeq: 0,
+      recentEvents: [],
     };
     activeRuntime = runtime;
     runtime.onAbort = () => stopRuntime(runtime);

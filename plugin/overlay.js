@@ -529,48 +529,51 @@
     }
   }
 
-  async function loadState() {
-    const response = await fetch("/api/state", { cache: "no-store" });
-    if (!response.ok) throw new Error("HTTP " + String(response.status));
-    render(await response.json());
-  }
+  const eventHandlers = {
+    contribution: showToast,
+    "goal-completed": celebrateGoal,
+    "timer-warning": flashWarning,
+    "timer-finished": announceFinished,
+  };
 
-  loadState().catch(function (error) {
-    console.error("CatOPanda overlay state error", error);
-    document.body.classList.add("is-ready");
-  });
-
-  function parse(event) {
+  /*
+   * Short requests, never a held connection: an EventSource per overlay used up
+   * the six connections Chromium and OBS allow per host, and the seventh
+   * Browser Source never loaded. The next poll is scheduled only after the
+   * previous one settles, so a slow answer never piles requests up.
+   */
+  let cursor = null;
+  async function poll() {
+    const query = cursor === null ? "" : "?since=" + String(cursor);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(function () { controller.abort(); }, 5000);
     try {
-      return JSON.parse(event.data);
-    } catch (error) {
-      console.error("CatOPanda overlay event error", error);
-      return null;
+      const response = await fetch("/api/poll" + query, { cache: "no-store", signal: controller.signal });
+      if (!response.ok) throw new Error("HTTP " + String(response.status));
+      const body = await response.json();
+      render(body.state);
+      if (cursor !== null) {
+        for (const event of body.events) {
+          const handler = eventHandlers[event.name];
+          if (handler) handler(event.payload);
+        }
+      }
+      cursor = body.seq;
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
-  const events = new EventSource("/events");
-  events.addEventListener("state", function (event) {
-    const state = parse(event);
-    if (state) render(state);
-  });
-  events.addEventListener("contribution", function (event) {
-    const support = parse(event);
-    if (support) showToast(support);
-  });
-  events.addEventListener("goal-completed", function (event) {
-    const payload = parse(event);
-    if (payload) celebrateGoal(payload);
-  });
-  events.addEventListener("timer-warning", function (event) {
-    flashWarning(parse(event));
-  });
-  events.addEventListener("timer-finished", function (event) {
-    announceFinished(parse(event));
-  });
-  events.addEventListener("error", function () {
-    window.setTimeout(function () {
-      loadState().catch(function () {});
-    }, 1500);
-  });
+  function schedulePoll() {
+    poll().then(
+      function () { window.setTimeout(schedulePoll, 1000); },
+      function (error) {
+        console.error("CatOPanda overlay state error", error);
+        document.body.classList.add("is-ready");
+        window.setTimeout(schedulePoll, 2000);
+      },
+    );
+  }
+
+  schedulePoll();
 })();
