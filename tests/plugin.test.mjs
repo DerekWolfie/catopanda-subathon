@@ -54,6 +54,73 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+test("donation IDs survive more than 1000 contributions and a restart", async () => {
+  const secrets = new Map();
+  const first = context({ warningThresholds: [] }, secrets);
+  try {
+    await plugin.activate(first.ctx);
+    for (let index = 0; index < 1100; index++) {
+      await first.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:" + index });
+    }
+    await plugin.deactivate();
+    const stored = JSON.parse(secrets.get("catopanda-subathon-state-v1"));
+    assert.ok(stored.idLedger.tail.length < 256);
+    const second = context({ warningThresholds: [] }, secrets);
+    await plugin.activate(second.ctx);
+    const before = await second.actions.get("get-state")({});
+    const replay = await second.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:0" });
+    assert.equal(replay.duplicate, true);
+    assert.equal(replay.secondsAdded, 0);
+    const after = await second.actions.get("get-state")({});
+    assert.deepEqual(after.totals, before.totals);
+    assert.equal(after.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.equal(after.totals.donate, 110000);
+    await second.actions.get("reset-state")({ scope: "ledger" });
+    assert.equal((await second.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:0" })).accepted, true);
+  } finally { await plugin.deactivate(); }
+});
+
+test("failed contribution storage rolls back totals, time and ID before retry", async () => {
+  const fixture = context();
+  const save = fixture.ctx.secrets.set;
+  try {
+    await plugin.activate(fixture.ctx);
+    const before = await fixture.actions.get("get-state")({});
+    fixture.ctx.secrets.set = async () => { throw new Error("disk full"); };
+    const input = { amountCents: 500, eventKey: "livepix:donation:retry" };
+    await assert.rejects(fixture.actions.get("record-donate")(input), /disk full/);
+    const failed = await fixture.actions.get("get-state")({});
+    assert.deepEqual(failed.totals, before.totals);
+    assert.equal(failed.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.equal(fixture.triggers.filter((entry) => entry.name === "contribution").length, 0);
+    fixture.ctx.secrets.set = save;
+    assert.equal((await fixture.actions.get("record-donate")(input)).accepted, true);
+    fixture.ctx.secrets.set = async () => { throw new Error("disk full"); };
+    await assert.rejects(fixture.actions.get("reset-state")({ scope: "ledger" }), /disk full/);
+    fixture.ctx.secrets.set = save;
+    assert.equal((await fixture.actions.get("record-donate")(input)).duplicate, true);
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 500);
+  } finally { fixture.ctx.secrets.set = save; await plugin.deactivate(); }
+});
+
+test("readers see committed totals while a contribution write is pending", async () => {
+  const fixture = context();
+  const save = fixture.ctx.secrets.set;
+  let release, entered;
+  const writing = new Promise((resolve) => { entered = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  try {
+    await plugin.activate(fixture.ctx);
+    fixture.ctx.secrets.set = async (key, value) => { entered(); await gate; return save(key, value); };
+    const pending = fixture.actions.get("record-donate")({ amountCents: 500, eventKey: "pending" });
+    await writing;
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 0);
+    release();
+    assert.equal((await pending).accepted, true);
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 500);
+  } finally { release(); fixture.ctx.secrets.set = save; await plugin.deactivate(); }
+});
+
 test("SDK 0.5 shutdown closes SSE and idle sockets, drains mutations and reuses the port", { timeout: 5000 }, async () => {
   const secrets = new Map();
   const fixture = context({}, secrets);

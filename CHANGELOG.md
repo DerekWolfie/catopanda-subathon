@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.4.6 (2026-09-22)
+
+- Extend the LivePix template with an accounting receipt after Register Donate.
+  Accepted and duplicate results confirm the donation without changing its event key.
+
+- Keep contribution IDs in persistent pages instead of expiring them after 1,000
+  entries. Preserve available legacy keys across upgrades and restarts.
+- Roll back failed contribution writes before publishing totals, timer changes,
+  or contribution events. A retry with the same key can then succeed once.
 
 ## 0.4.5 (2026-09-21)
 

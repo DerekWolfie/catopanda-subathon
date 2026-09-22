@@ -10,11 +10,11 @@ import { createReadStream, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
+import { loadIdLedger } from "./id-ledger.mjs";
 
 const PLUGIN_VERSION = "0.4.5";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
-const MAX_LEDGER_KEYS = 1000;
 const MAX_RECENT_EVENTS = 50;
 const MAX_TIMER_SECONDS = 31_536_000;
 const CONTRIBUTION_TYPES = ["donate", "subs", "bits"];
@@ -254,16 +254,16 @@ function hydrateState(raw, config, log) {
     // State saved by earlier versions has no counter: it starts at zero, and "definir total" can correct it.
     next.totals.addedSeconds = Math.max(0, Math.round(Number(totals.addedSeconds) || 0));
     next.ledger = Array.isArray(parsed.ledger)
-      ? parsed.ledger.filter((key) => typeof key === "string").slice(-MAX_LEDGER_KEYS)
+      ? parsed.ledger.filter((key) => typeof key === "string")
       : [];
+    next.idLedger = parsed.idLedger;
     next.lastSupport = parsed.lastSupport && typeof parsed.lastSupport === "object" ? parsed.lastSupport : null;
     next.history = Array.isArray(parsed.history)
       ? parsed.history.filter((entry) => entry && typeof entry === "object").slice(-20)
       : [];
     return next;
   } catch (error) {
-    log.warn("estado persistido inválido; iniciando estado limpo: " + describe(error));
-    return initialState(config);
+    throw new Error("Cannot restore Subathon state: " + describe(error));
   }
 }
 
@@ -450,11 +450,12 @@ function snapshot(runtime) {
   };
 }
 
-async function persist(runtime) {
+async function persist(runtime, required = false, state = runtime.state) {
   try {
-    await runtime.ctx.secrets.set(STATE_KEY, JSON.stringify(runtime.state));
+    await runtime.ctx.secrets.set(STATE_KEY, JSON.stringify(state));
   } catch (error) {
     runtime.ctx.log.warn("não foi possível persistir o estado: " + describe(error));
+    if (required) throw error;
   }
 }
 
@@ -576,7 +577,7 @@ async function recordContribution(runtime, input) {
     const eventKey = asText(input.eventKey, "");
     const ledgerKey = eventKey ? type + ":" + eventKey : "";
     const timerBefore = snapshot(runtime).timer;
-    if (ledgerKey && runtime.state.ledger.includes(ledgerKey)) {
+    if (ledgerKey && runtime.idLedger.ids.has(ledgerKey)) {
       return {
         accepted: false,
         duplicate: true,
@@ -587,6 +588,9 @@ async function recordContribution(runtime, input) {
       };
     }
 
+    const previousState = structuredClone(runtime.state);
+    const addedIds = ledgerKey ? [ledgerKey] : [];
+    const nextLedger = await runtime.idLedger.prepare(addedIds);
     const tier = type === "subs" ? normalizeTier(input.tier) : "";
     const beforeGoals = calculatedGoals(runtime);
     materializeTimer(runtime);
@@ -609,10 +613,7 @@ async function recordContribution(runtime, input) {
       runtime.state.timer.finishedAt = "";
       rearmWarnings(runtime);
     }
-    if (ledgerKey) {
-      runtime.state.ledger.push(ledgerKey);
-      runtime.state.ledger = runtime.state.ledger.slice(-MAX_LEDGER_KEYS);
-    }
+    runtime.state.idLedger = nextLedger;
     const actorName = asText(input.actorName, "Apoiador");
     const source = asText(input.source, type === "donate" ? "manual" : "twitch");
     const support = {
@@ -632,7 +633,11 @@ async function recordContribution(runtime, input) {
 
     const afterGoals = calculatedGoals(runtime);
     const completed = newlyCompletedGoals(beforeGoals, afterGoals);
-    await persist(runtime);
+    const nextState = runtime.state;
+    runtime.state = previousState;
+    await persist(runtime, true, nextState);
+    runtime.state = nextState;
+    runtime.idLedger.commit(nextLedger, addedIds);
     const timerAfter = snapshot(runtime).timer;
     broadcast(runtime, "contribution", { ...support, remainingSeconds: timerAfter.remainingSeconds });
     emitState(runtime);
@@ -772,6 +777,9 @@ async function resetState(runtime, input) {
   return queueMutation(runtime, async () => {
     const scope = asText(input.scope, "totals");
     if (!["totals", "timer", "ledger", "all"].includes(scope)) throw new Error("escopo inválido: " + scope);
+    const previousState = structuredClone(runtime.state);
+    const nextLedger = scope === "all" || scope === "ledger"
+      ? await loadIdLedger(runtime.ctx.secrets, "subathon-ids") : runtime.idLedger;
     if (scope === "all") runtime.state = initialState(runtime.config);
     if (scope === "totals") {
       runtime.state.totals = { donateCents: 0, subs: 0, bits: 0, addedSeconds: 0 };
@@ -780,8 +788,13 @@ async function resetState(runtime, input) {
     }
     if (scope === "timer") runtime.state.timer = initialState(runtime.config).timer;
     if (scope === "ledger") runtime.state.ledger = [];
+    runtime.state.idLedger = nextLedger.descriptor;
     runtime.state.revision += 1;
-    await persist(runtime);
+    const nextState = runtime.state;
+    runtime.state = previousState;
+    await persist(runtime, true, nextState);
+    runtime.state = nextState;
+    runtime.idLedger = nextLedger;
     emitState(runtime);
     return { scope, ok: true };
   });
@@ -1118,19 +1131,19 @@ export default {
       ctx.setStatus({ health: "healthy", connectionState: "desativado" });
       return;
     }
-    let persisted = null;
-    try {
-      persisted = await ctx.secrets.get(STATE_KEY);
-    } catch {
-      persisted = null;
-    }
+    const persisted = await ctx.secrets.get(STATE_KEY);
+    const state = hydrateState(persisted, config, ctx.log);
+    const idLedger = await loadIdLedger(ctx.secrets, "subathon-ids", state.idLedger, state.ledger);
+    state.idLedger = idLedger.descriptor;
+    state.ledger = [];
     const parsedGoals = parseGoals(config, ctx.log);
     const runtime = {
       ctx,
       config,
       goals: parsedGoals.goals,
       goalErrors: parsedGoals.errors,
-      state: hydrateState(persisted, config, ctx.log),
+      state,
+      idLedger,
       clients: new Set(),
       sockets: new Set(),
       binding: null,
@@ -1145,6 +1158,7 @@ export default {
       eventSeq: 0,
       recentEvents: [],
     };
+    await persist(runtime, true);
     activeRuntime = runtime;
     runtime.onAbort = () => stopRuntime(runtime);
     ctx.signal?.addEventListener("abort", runtime.onAbort, { once: true });

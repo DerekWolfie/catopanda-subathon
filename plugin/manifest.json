@@ -787,7 +787,7 @@
     {
       "id": "catopanda-subathon-livepix",
       "name": "CatOPanda Subathon: LivePix pronta",
-      "description": "Cada pagamento do plugin LivePix vira Donate no subathon, com deduplicação pela chave do LivePix. Requer o plugin LivePix instalado. Importa desligado; revise e ative.",
+      "description": "Cada pagamento vira Donate uma vez por chave e confirma a contabilização ao dashboard. Requer o LivePix com suporte a recuperação e confirmação. Importa desligado; revise e ative.",
       "flow": {
         "schemaVersion": 1,
         "id": "tpl-catopanda-subathon-livepix",
@@ -802,14 +802,22 @@
             "eventKey": { "mode": "expression", "expression": "{{ $trigger.metadata.eventKey }}" },
             "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" },
             "source": { "mode": "fixed", "value": "livepix" }
+          },
+          {
+            "type": "action.x.livepix.confirm-accounted",
+            "id": "confirm-livepix",
+            "eventKey": { "mode": "expression", "expression": "{{ $trigger.metadata.eventKey }}" },
+            "accounted": { "mode": "expression", "expression": "{{ $json.accepted || $json.duplicate }}" }
           }
         ],
         "edges": [
-          { "id": "e-donate", "source": "livepix-donation", "target": "record-donate" }
+          { "id": "e-donate", "source": "livepix-donation", "target": "record-donate" },
+          { "id": "e-confirm", "source": "record-donate", "target": "confirm-livepix" }
         ],
         "layout": {
           "livepix-donation": { "x": 0, "y": 0 },
-          "record-donate": { "x": 380, "y": 0 }
+          "record-donate": { "x": 380, "y": 0 },
+          "confirm-livepix": { "x": 760, "y": 0 }
         }
       }
     },

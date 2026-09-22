@@ -1,5 +1,12 @@
 # CatOPanda Subathon 0.4.5
 
+The LivePix template now sends an accounting receipt after Register Donate. Update
+LivePix and its dashboard to the recovery-capable build first. Existing flows need
+**LivePix: confirmar contabilização** connected after Register Donate, with `eventKey`
+set to `{{ $trigger.metadata.eventKey }}` and `accounted` set to
+`{{ $json.accepted || $json.duplicate }}`. Keep the accounting ledger intact when
+recovering donations; a repeated key returns `duplicate: true` without adding time.
+
 Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
 `io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 2.0.0 (ZIP
 separado), conectado ao OSC LivePix Dashboard, e importe o template **CatOPanda Subathon:
@@ -91,8 +98,10 @@ no editor ou escreva `{{ $trigger.metadata.bits }}` direto.
 | cronômetro abaixo de | Gatilho. Dispara uma vez em cada marco da aba Cronômetro. |
 | cronômetro finalizado | Gatilho. Dispara uma vez quando o tempo chega a zero. |
 
-Informe uma **chave única do evento** sempre que puder: a mesma chave nunca soma duas
-vezes, mesmo que o gatilho repita a entrega. Os templates já preenchem a chave.
+Provide a unique event key whenever available. The templates already map this field.
+Keys are retained in encrypted pages across restarts, without the previous 1,000-key
+limit. Available legacy keys are migrated; keys discarded by older versions cannot
+be reconstructed. Resetting the ledger or all state intentionally forgets these keys.
 
 ### Sub Prime
 
