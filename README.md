@@ -6,7 +6,7 @@ LivePix e outros gatilhos por ações e fórmulas.
 
 | Contrato | Valor |
 | --- | --- |
-| Versão do plugin | 0.4.4 |
+| Versão do plugin | 0.4.5 |
 | OSC Flow Studio | `>=0.5.0 <0.6.0` |
 | Pacote | `io.github.osc-flow-studio.catopanda-subathon` |
 | ID de blocos e configurações | `catopanda-subathon` |
@@ -15,7 +15,7 @@ LivePix e outros gatilhos por ações e fórmulas.
 
 ## Instalação
 
-1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip` da release ou gere
+1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.5.zip` da release ou gere
    localmente. No Studio, abra **Integrações → Install from zip**, revise e confirme.
 2. Configure porta, conversões de tempo, metas, efeitos e tema; ative a integração.
 3. Importe os templates **Twitch pronta** e **acompanhar no console** conforme necessário.
@@ -71,16 +71,16 @@ npm run catalog
 `npm run package` executa a validação do schema, as regras de pacote e os testes
 antes de gerar:
 
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip`
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip.sha256`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.5.zip`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.5.zip.sha256`
 
 `npm run catalog` gera `dist/listing.json`, com tamanho e SHA-256 do ZIP real.
 O ZIP contém somente `plugin/`, incluindo os assets dos overlays, com o manifest
 na raiz. Os scripts de publicação e as dependências de desenvolvimento ficam fora.
 
 ```powershell
-Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip -Algorithm SHA256
-Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.4.zip.sha256
+Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.5.zip -Algorithm SHA256
+Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.5.zip.sha256
 ```
 
 Use `npm run check` para validar sem gerar artefatos. Para inspecionar os overlays
@@ -108,15 +108,15 @@ Primeiro envio, usando o `origin` já configurado:
 npm ci
 npm run package
 git add .
-git commit -m "Prepare CatOPanda Subathon 0.4.4 package"
+git commit -m "Prepare CatOPanda Subathon 0.4.5 package"
 git push -u origin main
 ```
 
 Aguarde **Validate plugin** passar no Windows e Linux. Depois publique a tag:
 
 ```powershell
-git tag v0.4.4
-git push origin v0.4.4
+git tag v0.4.5
+git push origin v0.4.5
 ```
 
 O workflow **Release OSC Flow Studio package** valida novamente, recupera o catálogo
@@ -132,10 +132,34 @@ Pare se falhar validação, divergir a tag da versão ou faltar o catálogo ante
 Releases existentes não são sobrescritas. Se a execução parar após criar o draft,
 confira seus três assets no GitHub e publique esse draft para concluir a release.
 
-Para uma atualização, incremente a versão em `package.json`, `plugin/manifest.json`
-e `PLUGIN_VERSION` em `plugin/index.mjs`; atualize `CHANGELOG.md` e a documentação.
-Execute `npm install --package-lock-only`, valide e publique a nova tag. Uma versão
-já distribuída não deve receber outro ZIP com bytes diferentes.
+### Nova versão
+
+Durante o desenvolvimento, descreva cada mudança em `## Unreleased` no `CHANGELOG.md`.
+Para lançar, um comando prepara tudo no working tree:
+
+```powershell
+npm run release:prepare -- patch     # ou minor, major, ou a versão exata: 0.4.6
+```
+
+O script:
+
+1. grava a mesma versão em `package.json`, `package-lock.json`, `plugin/manifest.json`,
+   `PLUGIN_VERSION` em `plugin/index.mjs` e nas linhas de versão dos dois READMEs
+   (trechos históricos, como "Na versão 0.4.4", ficam como estão);
+2. transforma `## Unreleased` em `## X.Y.Z (data)` e abre um `## Unreleased` vazio;
+   recusa continuar se não houver nada descrito;
+3. roda `npm run package` (schema, regras de pacote e testes) e `npm run catalog`;
+4. mostra as notas que vão para a release e os comandos de commit e tag.
+
+Ele não faz commit, tag nem push. Recusa uma versão menor que uma tag existente e
+avisa, com os comandos para corrigir, quando a tag da versão já existe. Use
+`--dry-run` para só ver o que mudaria e `--skip-build` para pular o empacotamento.
+Se a validação falhar, corrija e rode o mesmo comando de novo: ele é idempotente.
+
+Um teste falha sempre que algum desses arquivos fica com versão diferente, então uma
+troca manual incompleta não chega à tag. A release no GitHub mostra só a seção da
+versão no `CHANGELOG.md`. Uma versão já distribuída não deve receber outro ZIP com
+bytes diferentes.
 
 Para gerar manualmente um catálogo com histórico, use a cópia pública anterior:
 

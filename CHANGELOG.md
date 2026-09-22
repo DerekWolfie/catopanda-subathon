@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.5 (2026-09-21)
+
 - Count the time contributions add to the timer. The total is persisted, zeroed by the
   totals reset, correctable through "definir total" with the new "Tempo adicionado"
   type, and exposed as `totals.addedSeconds` / `totals.addedLabel` in the state and as
@@ -16,6 +18,12 @@
   connections per host, so the seventh Browser Source never loaded. Overlays now poll
   `/api/poll` once a second with an event cursor: each alert is delivered once, and a
   reloaded source never replays one. `/events` stays available for external readers.
+- Document the LivePix plugin 2.0.0, which receives donations from the OSC LivePix
+  Dashboard. The LivePix template and its deduplication key are unchanged.
+- Add `npm run release:prepare`, which writes one version to every file that names it,
+  turns `Unreleased` into the version section, and builds the ZIP and catalog. A test
+  now fails when any of those files disagrees.
+- GitHub releases show only their own changelog section instead of the whole file.
 
 ## 0.4.4 (2026-09-13)
 

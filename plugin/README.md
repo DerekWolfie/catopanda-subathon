@@ -1,8 +1,10 @@
-# CatOPanda Subathon 0.4.4
+# CatOPanda Subathon 0.4.5
 
 Instale este ZIP por **Integrações → Install from zip** no OSC Flow Studio 0.5.x. O pacote é
-`io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 1.2.0 (ZIP
-separado) e importe o template **CatOPanda Subathon: LivePix pronta**.
+`io.github.osc-flow-studio.catopanda-subathon`. Para receber doações do LivePix, instale também o plugin **LivePix** 2.0.0 (ZIP
+separado), conectado ao OSC LivePix Dashboard, e importe o template **CatOPanda Subathon:
+LivePix pronta**. Com o início do subathon configurado no plugin LivePix, só doações a
+partir dele chegam ao cronômetro.
 
 ## Depois de ativar
 
@@ -151,8 +153,80 @@ que a porta liberar, os overlays voltam sozinhos, com as mesmas URLs já coladas
 
 - O servidor responde apenas em `127.0.0.1`; nenhuma outra máquina da rede o alcança.
 - Uma porta ocupada nunca vira outra porta: as URLs do OBS não mudam por baixo do pano.
-- Nenhuma credencial passa por este plugin. Pagamentos chegam pelo plugin LivePix e
-  eventos da Twitch pela integração nativa.
+- Nenhuma credencial passa por este plugin. Pagamentos chegam pelo plugin LivePix (que
+  fala com o OSC LivePix Dashboard) e eventos da Twitch pela integração nativa.
 - A rota de fonte local serve somente arquivos `.woff`, `.woff2`, `.ttf` e `.otf`
   apontados na configuração.
 - O estado (cronômetro, totais, deduplicação) fica no cofre criptografado do Studio.
+
+## Manual subscription corrections
+
+Use **CatOPanda: definir total** with **Tipo** set to **Subs**. Subscriptions,
+resubscriptions, and gifted subscriptions share this total. Choose **Adicionar** to
+add a missing count, **Subtrair** to remove an excess count, or **Definir** to enter
+the correct total. Enter a whole, nonnegative quantity.
+
+For each correction, choose whether **Alterar cronômetro** is on. It defaults to
+off, so existing blocks still set totals without changing time. When on, the block
+also adjusts remaining time and contributed time using the selected **Tier do
+ajuste** and its configured seconds per subscription. Correct different tiers in
+separate operations. For example, subtracting two Tier 1 subscriptions with 600
+seconds per subscription removes two Subs and up to 1,200 seconds from each time
+counter. If only one Sub remains, the correction removes one Sub and 600 seconds.
+
+Totals and contributed time cannot fall below zero. Remaining time is capped at
+365 days. A paused timer stays paused, including when time is added at zero.
+Corrections refresh goals and overlays and survive restart. They preserve real
+contribution history and duplicate-event keys and do not create a contribution
+alert. Crossing a goal still emits the existing goal-completed event.
+
+Donate, Bits, and contributed-time totals also support the three operations, but
+**Alterar cronômetro** must be off for those types. The action returns `type`,
+`total`, and `timerChanged`; the last field is true only when the correction
+actually changes remaining time.
+
+## Applying the subscription fix
+
+Update both OSC Flow Studio and this plugin, then restart the Studio backend so
+the new Twitch dispatch and plugin code are loaded. Subscription contributions
+use the unified Twitch chat-notification source. Duplicate deliveries keep the
+same event key, and the Twitch template excludes gifted subscription and gifted
+resubscription notifications because the gift batch already includes them.
+
+Updating a plugin does not rewrite a flow you already imported. To adapt
+**CatOPanda Subathon: Twitch**, copy both guards and all three event-key formulas
+from the updated **CatOPanda Subathon: Twitch pronta** template:
+
+- Put `exclude-gift-recipient` between `twitch-subscribe` and `record-subscribe`.
+  Compare `{{ $trigger.metadata.isGift }}` with the boolean `true` using **not
+  equal**, and connect only the guard's **true** output to the recording block.
+- Put `exclude-gift-resub` between `twitch-resub` and `record-resub`. Compare
+  `{{ !!($trigger.metadata.raw && ($trigger.metadata.raw.isGift || $trigger.metadata.raw.is_gift)) }}`
+  with the boolean `true` using **not equal**, and connect only the guard's
+  **true** output to the recording block.
+- Set **Chave única do evento** (`eventKey`) on `record-subscribe` to
+  `twitch:subscribe:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}`.
+- Set `eventKey` on `record-resub` to
+  `twitch:resub:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}`.
+- Set `eventKey` on `record-sub-gift` to
+  `twitch:gift:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}`.
+
+Remove the old direct subscribe/resub connections to the recording blocks so
+they cannot bypass the guards. Alternatively, import the updated template and
+retire the old flow. Keep only one accounting flow enabled for the same events.
+Do not run both copies during the transition.
+
+This update does not infer historical duplicate contributions or alter existing
+totals. Use the manual correction block after reviewing the excess counts, and
+choose whether each correction should also change time.
+
+## Host contract verification
+
+`npm test` runs the standalone plugin suite. For integration verification, first
+run `pnpm.cmd build:packages` in the OSC Flow Studio checkout, then run
+`npm run test:host-contract` here. The 21 host contract tests execute the built
+FlowEngine and Twitch normalization and validate output schemas and downstream
+formulas using Studio's shared executable contract helper.
+
+The host suite requires Node.js 22 or newer and defaults to the sibling checkout
+at `../osc-flow-studio`. Set `OSC_FLOW_STUDIO_ROOT` to use another checkout.

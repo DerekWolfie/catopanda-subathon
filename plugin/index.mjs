@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 
-const PLUGIN_VERSION = "0.4.4";
+const PLUGIN_VERSION = "0.4.5";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_LEDGER_KEYS = 1000;
@@ -715,27 +715,56 @@ async function controlTimer(runtime, input) {
 async function setTotal(runtime, input) {
   return queueMutation(runtime, async () => {
     const rawType = input.contributionType ?? input.type;
-    const value = Math.max(0, Math.round(Number(input.value) || 0));
-    if (asText(rawType, "").toLowerCase() === "added-time") {
-      runtime.state.totals.addedSeconds = value;
-      runtime.state.revision += 1;
-      await persist(runtime);
-      emitState(runtime);
-      return { type: "added-time", total: value, timerChanged: false };
-    }
-    const type = normalizeType(rawType);
+    const type = asText(rawType, "").toLowerCase() === "added-time" ? "added-time" : normalizeType(rawType);
     if (!type) throw new Error("tipo de total inválido");
+    const operation = input.operation === undefined ? "set" : input.operation;
+    if (!["set", "add", "subtract"].includes(operation)) throw new Error("operação de ajuste inválida");
+    const updateTimer = input.updateTimer === undefined ? false : input.updateTimer;
+    if (typeof updateTimer !== "boolean") throw new Error("alterar cronômetro precisa ser verdadeiro ou falso");
+    if (updateTimer && type !== "subs") throw new Error("alterar cronômetro neste ajuste requer o tipo Subs");
+    const rawValue = input.value === undefined ? 0 : input.value;
+    const numericValue = Number(rawValue);
+    if (!["number", "string"].includes(typeof rawValue) || String(rawValue).trim() === ""
+      || !Number.isFinite(numericValue) || numericValue < 0
+      || (type === "subs" && !Number.isSafeInteger(numericValue))) {
+      throw new Error("valor do ajuste inválido: use um número não negativo e inteiro para Subs");
+    }
+    const value = Math.round(numericValue);
+    const previous = type === "added-time" ? runtime.state.totals.addedSeconds : currentForType(runtime.state, type);
+    const total = operation === "set" ? value : operation === "add" ? previous + value : Math.max(0, previous - value);
+    if (!Number.isSafeInteger(total)) throw new Error("total do ajuste fora do limite");
+    const change = total - previous;
+    const secondsChange = updateTimer ? Math.sign(change) * contributionSeconds(runtime, "subs", Math.abs(change), normalizeTier(input.tier)) : 0;
+    const addedSeconds = Math.max(0, runtime.state.totals.addedSeconds + secondsChange);
+    if (updateTimer && !Number.isSafeInteger(addedSeconds)) throw new Error("tempo do ajuste fora do limite");
+
     const beforeGoals = calculatedGoals(runtime);
-    if (type === "donate") runtime.state.totals.donateCents = value;
-    if (type === "subs") runtime.state.totals.subs = value;
-    if (type === "bits") runtime.state.totals.bits = value;
+    let timerChanged = false;
+    if (updateTimer && secondsChange !== 0) {
+      materializeTimer(runtime);
+      const timer = runtime.state.timer;
+      const remaining = Math.max(0, Math.min(MAX_TIMER_SECONDS, timer.remainingSeconds + secondsChange));
+      timerChanged = remaining !== timer.remainingSeconds;
+      timer.remainingSeconds = remaining;
+      if (remaining === 0) timer.running = false;
+      else {
+        timer.finishedEmitted = false;
+        timer.finishedAt = "";
+      }
+      rearmWarnings(runtime);
+      runtime.state.totals.addedSeconds = addedSeconds;
+    }
+    if (type === "donate") runtime.state.totals.donateCents = total;
+    if (type === "subs") runtime.state.totals.subs = total;
+    if (type === "bits") runtime.state.totals.bits = total;
+    if (type === "added-time") runtime.state.totals.addedSeconds = total;
     runtime.state.revision += 1;
     const afterGoals = calculatedGoals(runtime);
     const completed = newlyCompletedGoals(beforeGoals, afterGoals);
     await persist(runtime);
     emitState(runtime);
     for (const goal of completed) emitGoalCompleted(runtime, goal, afterGoals);
-    return { type, total: currentForType(runtime.state, type), timerChanged: false };
+    return { type, total, timerChanged };
   });
 }
 
