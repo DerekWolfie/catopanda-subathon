@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.4.6 (2026-09-22)
+
+- Extend the LivePix template with an accounting receipt after Register Donate.
+  Accepted and duplicate results confirm the donation without changing its event key.
+
+- Keep contribution IDs in persistent pages instead of expiring them after 1,000
+  entries. Preserve available legacy keys across upgrades and restarts.
+- Roll back failed contribution writes before publishing totals, timer changes,
+  or contribution events. A retry with the same key can then succeed once.
+
+## 0.4.5 (2026-09-21)
 
 - Count the time contributions add to the timer. The total is persisted, zeroed by the
   totals reset, correctable through "definir total" with the new "Tempo adicionado"
@@ -16,6 +26,12 @@
   connections per host, so the seventh Browser Source never loaded. Overlays now poll
   `/api/poll` once a second with an event cursor: each alert is delivered once, and a
   reloaded source never replays one. `/events` stays available for external readers.
+- Document the LivePix plugin 2.0.0, which receives donations from the OSC LivePix
+  Dashboard. The LivePix template and its deduplication key are unchanged.
+- Add `npm run release:prepare`, which writes one version to every file that names it,
+  turns `Unreleased` into the version section, and builds the ZIP and catalog. A test
+  now fails when any of those files disagrees.
+- GitHub releases show only their own changelog section instead of the whole file.
 
 ## 0.4.4 (2026-09-13)
 

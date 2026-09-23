@@ -54,6 +54,73 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+test("donation IDs survive more than 1000 contributions and a restart", async () => {
+  const secrets = new Map();
+  const first = context({ warningThresholds: [] }, secrets);
+  try {
+    await plugin.activate(first.ctx);
+    for (let index = 0; index < 1100; index++) {
+      await first.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:" + index });
+    }
+    await plugin.deactivate();
+    const stored = JSON.parse(secrets.get("catopanda-subathon-state-v1"));
+    assert.ok(stored.idLedger.tail.length < 256);
+    const second = context({ warningThresholds: [] }, secrets);
+    await plugin.activate(second.ctx);
+    const before = await second.actions.get("get-state")({});
+    const replay = await second.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:0" });
+    assert.equal(replay.duplicate, true);
+    assert.equal(replay.secondsAdded, 0);
+    const after = await second.actions.get("get-state")({});
+    assert.deepEqual(after.totals, before.totals);
+    assert.equal(after.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.equal(after.totals.donate, 110000);
+    await second.actions.get("reset-state")({ scope: "ledger" });
+    assert.equal((await second.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:donation:0" })).accepted, true);
+  } finally { await plugin.deactivate(); }
+});
+
+test("failed contribution storage rolls back totals, time and ID before retry", async () => {
+  const fixture = context();
+  const save = fixture.ctx.secrets.set;
+  try {
+    await plugin.activate(fixture.ctx);
+    const before = await fixture.actions.get("get-state")({});
+    fixture.ctx.secrets.set = async () => { throw new Error("disk full"); };
+    const input = { amountCents: 500, eventKey: "livepix:donation:retry" };
+    await assert.rejects(fixture.actions.get("record-donate")(input), /disk full/);
+    const failed = await fixture.actions.get("get-state")({});
+    assert.deepEqual(failed.totals, before.totals);
+    assert.equal(failed.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.equal(fixture.triggers.filter((entry) => entry.name === "contribution").length, 0);
+    fixture.ctx.secrets.set = save;
+    assert.equal((await fixture.actions.get("record-donate")(input)).accepted, true);
+    fixture.ctx.secrets.set = async () => { throw new Error("disk full"); };
+    await assert.rejects(fixture.actions.get("reset-state")({ scope: "ledger" }), /disk full/);
+    fixture.ctx.secrets.set = save;
+    assert.equal((await fixture.actions.get("record-donate")(input)).duplicate, true);
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 500);
+  } finally { fixture.ctx.secrets.set = save; await plugin.deactivate(); }
+});
+
+test("readers see committed totals while a contribution write is pending", async () => {
+  const fixture = context();
+  const save = fixture.ctx.secrets.set;
+  let release, entered;
+  const writing = new Promise((resolve) => { entered = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  try {
+    await plugin.activate(fixture.ctx);
+    fixture.ctx.secrets.set = async (key, value) => { entered(); await gate; return save(key, value); };
+    const pending = fixture.actions.get("record-donate")({ amountCents: 500, eventKey: "pending" });
+    await writing;
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 0);
+    release();
+    assert.equal((await pending).accepted, true);
+    assert.equal((await fixture.actions.get("get-state")({})).totals.donate, 500);
+  } finally { release(); fixture.ctx.secrets.set = save; await plugin.deactivate(); }
+});
+
 test("SDK 0.5 shutdown closes SSE and idle sockets, drains mutations and reuses the port", { timeout: 5000 }, async () => {
   const secrets = new Map();
   const fixture = context({}, secrets);
@@ -729,4 +796,152 @@ test("the font route only serves local font files", async () => {
   } finally {
     await plugin.deactivate();
   }
+});
+
+test("manual subscription corrections persist goals without changing time, history, or deduplication", async () => {
+  const secrets = new Map();
+  const config = { goals: [{ id: "subs-3", type: "subs", title: "Three subscriptions", amount: "3", order: 1 }] };
+  const fixture = context(config, secrets);
+  let expected;
+  await plugin.activate(fixture.ctx);
+  try {
+    await fixture.actions.get("record-sub")({ count: 1, tier: "1000", eventKey: "manual-preserved-event" });
+    const before = await fixture.actions.get("get-state")({});
+    const base = new URL(before.urls.brbStage).origin;
+    const cursor = (await (await fetch(base + "/api/poll")).json()).seq;
+    const result = await fixture.actions.get("set-total")({ contributionType: "subs", value: "3" });
+    assert.deepEqual(result, { type: "subs", total: 3, timerChanged: false });
+    const added = await fixture.actions.get("set-total")({ contributionType: "subs", operation: "add", value: 2 });
+    assert.equal(added.total, 5);
+    const subtracted = await fixture.actions.get("set-total")({ contributionType: "subs", operation: "subtract", value: 1, updateTimer: false });
+    assert.equal(subtracted.total, 4);
+    expected = await fixture.actions.get("get-state")({});
+    assert.equal(expected.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.equal(expected.timer.running, false);
+    assert.equal(expected.totals.addedSeconds, before.totals.addedSeconds);
+    assert.equal(expected.goals[0].current, 4);
+    assert.equal(expected.goals[0].completed, true);
+    assert.deepEqual(expected.history, before.history);
+    assert.deepEqual(expected.lastSupport, before.lastSupport);
+    assert.equal(fixture.triggers.filter((event) => event.name === "contribution").length, 1);
+    assert.equal(fixture.triggers.filter((event) => event.name === "goal-completed").length, 1);
+    const poll = await (await fetch(base + "/api/poll?since=" + cursor)).json();
+    assert.equal(poll.state.totals.subs, 4);
+    assert.equal(poll.events.some((event) => event.name === "contribution"), false);
+    const duplicate = await fixture.actions.get("record-sub")({ count: 1, eventKey: "manual-preserved-event" });
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.total, 4);
+  } finally { await plugin.deactivate(); }
+  const reopened = context(config, secrets);
+  await plugin.activate(reopened.ctx);
+  try {
+    const restored = await reopened.actions.get("get-state")({});
+    assert.deepEqual(restored.totals, expected.totals);
+    assert.deepEqual(restored.history, expected.history);
+    assert.equal(restored.timer.running, false);
+    assert.equal(restored.timer.remainingSeconds, expected.timer.remainingSeconds);
+    assert.equal(restored.goals[0].current, 4);
+    assert.equal((await reopened.actions.get("record-sub")({ count: 1, eventKey: "manual-preserved-event" })).duplicate, true);
+  } finally { await plugin.deactivate(); }
+});
+
+test("manual timer corrections use each tier and the actual signed subscription change", async () => {
+  for (const [tier, seconds] of [["1000", 600], ["2000", 1200], ["3000", 3000], ["prime", 900]]) {
+    const secrets = new Map();
+    const fixture = context({}, secrets);
+    await plugin.activate(fixture.ctx);
+    try {
+      const adjust = fixture.actions.get("set-total");
+      await adjust({ contributionType: "subs", value: 3 });
+      await adjust({ contributionType: "added-time", value: 10000 });
+      const added = await adjust({ contributionType: "subs", operation: "add", value: 2, updateTimer: true, tier });
+      assert.deepEqual(added, { type: "subs", total: 5, timerChanged: true });
+      const increased = await fixture.actions.get("get-state")({});
+      assert.equal(increased.timer.remainingSeconds, 3600 + 2 * seconds, tier);
+      assert.equal(increased.totals.addedSeconds, 10000 + 2 * seconds, tier);
+      const set = await adjust({ contributionType: "subs", operation: "set", value: 4, updateTimer: true, tier });
+      assert.equal(set.total, 4);
+      const decreased = await fixture.actions.get("get-state")({});
+      assert.equal(decreased.timer.remainingSeconds, 3600 + seconds, tier);
+      assert.equal(decreased.totals.addedSeconds, 10000 + seconds, tier);
+      const removed = await adjust({ contributionType: "subs", operation: "subtract", value: 99, updateTimer: true, tier });
+      assert.equal(removed.total, 0);
+      const final = await fixture.actions.get("get-state")({});
+      assert.equal(final.timer.remainingSeconds, Math.max(0, 3600 - 3 * seconds), tier);
+      assert.equal(final.totals.addedSeconds, 10000 - 3 * seconds, tier);
+      assert.equal(final.timer.running, false);
+      assert.deepEqual(final.history, []);
+      assert.equal(fixture.triggers.filter((event) => event.name === "contribution").length, 0);
+    } finally { await plugin.deactivate(); }
+    const reopened = context({}, secrets);
+    await plugin.activate(reopened.ctx);
+    try {
+      const restored = await reopened.actions.get("get-state")({});
+      assert.equal(restored.totals.subs, 0);
+      assert.equal(restored.totals.addedSeconds, 10000 - 3 * seconds, tier);
+      assert.equal(restored.timer.remainingSeconds, Math.max(0, 3600 - 3 * seconds), tier);
+      assert.equal(restored.timer.running, false);
+    } finally { await plugin.deactivate(); }
+  }
+});
+
+test("manual timer corrections clamp both time counters and never start a paused timer", async () => {
+  const fixture = context({ initialTimerSeconds: 0 });
+  await plugin.activate(fixture.ctx);
+  try {
+    const adjust = fixture.actions.get("set-total");
+    await adjust({ contributionType: "subs", operation: "add", value: 1, updateTimer: true });
+    const fromZero = await fixture.actions.get("get-state")({});
+    assert.equal(fromZero.timer.remainingSeconds, 600);
+    assert.equal(fromZero.timer.running, false);
+    await fixture.actions.get("timer-control")({ operation: "set", seconds: 31535900 });
+    await adjust({ contributionType: "subs", operation: "add", value: 1, updateTimer: true });
+    const capped = await fixture.actions.get("get-state")({});
+    assert.equal(capped.timer.remainingSeconds, 31536000);
+    assert.equal(capped.totals.addedSeconds, 1200);
+    assert.equal(capped.timer.running, false);
+    const noTimerChange = await adjust({ contributionType: "subs", operation: "add", value: 1, updateTimer: true });
+    assert.equal(noTimerChange.timerChanged, false);
+    assert.equal((await fixture.actions.get("get-state")({})).totals.addedSeconds, 1800);
+    await fixture.actions.get("timer-control")({ operation: "set", seconds: 20 });
+    await fixture.actions.get("timer-control")({ operation: "resume" });
+    await adjust({ contributionType: "subs", operation: "subtract", value: 1, updateTimer: true, tier: "3000" });
+    const atZero = await fixture.actions.get("get-state")({});
+    assert.equal(atZero.timer.remainingSeconds, 0);
+    assert.equal(atZero.timer.running, false);
+    assert.equal(atZero.totals.addedSeconds, 0);
+    assert.equal(atZero.totals.subs, 2);
+    const same = await adjust({ contributionType: "subs", value: 2, updateTimer: true });
+    assert.equal(same.timerChanged, false);
+  } finally { await plugin.deactivate(); }
+});
+
+test("invalid manual corrections reject before mutation and leave the queue usable", async () => {
+  const fixture = context();
+  await plugin.activate(fixture.ctx);
+  try {
+    const adjust = fixture.actions.get("set-total");
+    await adjust({ contributionType: "subs", value: 2 });
+    const stored = fixture.sharedSecrets.get("catopanda-subathon-state-v1");
+    const triggers = [...fixture.triggers];
+    const invalid = [
+      ...[-1, 0.5, NaN, Infinity, -Infinity, "bad", "", " ", null, true, {}, [], Number.MAX_SAFE_INTEGER + 1].map((value) => ({ contributionType: "subs", value })),
+      ...["multiply", "", null, true].map((operation) => ({ contributionType: "subs", value: 1, operation })),
+      ...["true", "false", 1, null].map((updateTimer) => ({ contributionType: "subs", value: 1, updateTimer })),
+      ...["donate", "bits", "added-time"].map((contributionType) => ({ contributionType, value: 1, updateTimer: true })),
+      { contributionType: "coins", value: 1 },
+      { contributionType: "subs", operation: "add", value: Number.MAX_SAFE_INTEGER },
+      { contributionType: "subs", value: Number.MAX_SAFE_INTEGER, updateTimer: true },
+    ];
+    for (const input of invalid) {
+      await assert.rejects(() => adjust(input));
+      assert.equal(fixture.sharedSecrets.get("catopanda-subathon-state-v1"), stored);
+      assert.deepEqual(fixture.triggers, triggers);
+      const state = await fixture.actions.get("get-state")({});
+      assert.equal(state.totals.subs, 2);
+      assert.equal(state.timer.remainingSeconds, 3600);
+      assert.equal(state.totals.addedSeconds, 0);
+    }
+    assert.deepEqual(await adjust({ contributionType: "subs", operation: "add", value: 1 }), { type: "subs", total: 3, timerChanged: false });
+  } finally { await plugin.deactivate(); }
 });

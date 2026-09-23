@@ -2,7 +2,7 @@
   "$schema": "../sdk/community-plugin-manifest.schema.json",
   "id": "catopanda-subathon",
   "name": "CatOPanda Subathon",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "packageId": "io.github.osc-flow-studio.catopanda-subathon",
   "engines": { "oscFlowStudio": ">=0.5.0 <0.6.0" },
   "author": { "name": "DerekWolfie", "url": "https://github.com/DerekWolfie" },
@@ -497,7 +497,7 @@
       "type": "action.x.catopanda-subathon.set-total",
       "label": "CatOPanda: definir total",
       "category": "CatOPanda Subathon",
-      "description": "Corrige manualmente um total de Donate, Subs, Bits ou o tempo adicionado sem alterar o cronômetro.",
+      "description": "Adiciona, subtrai ou define um total. Para Subs e Resubs, escolha se o ajuste também altera o cronômetro.",
       "role": "action",
       "fields": [
         {
@@ -511,13 +511,36 @@
             { "value": "added-time", "label": "Tempo adicionado (segundos)" }
           ]
         },
-        { "key": "value", "label": "Novo total", "kind": "number", "min": 0 }
+        {
+          "key": "operation",
+          "label": "Operação",
+          "kind": "select",
+          "options": [
+            { "value": "set", "label": "Definir" },
+            { "value": "add", "label": "Adicionar" },
+            { "value": "subtract", "label": "Subtrair" }
+          ]
+        },
+        { "key": "value", "label": "Quantidade ou novo total", "kind": "number", "min": 0, "step": 1, "helpText": "Subs e Resubs compartilham o total Subs. Use uma quantidade inteira." },
+        { "key": "updateTimer", "label": "Alterar cronômetro", "kind": "boolean", "helpText": "Somente para Subs. Também corrige o tempo adicionado, conforme o tier selecionado." },
+        {
+          "key": "tier",
+          "label": "Tier do ajuste",
+          "kind": "select",
+          "helpText": "Usado quando Alterar cronômetro está ligado. Para tiers diferentes, faça um ajuste por tier.",
+          "options": [
+            { "value": "1000", "label": "Tier 1" },
+            { "value": "2000", "label": "Tier 2" },
+            { "value": "3000", "label": "Tier 3" },
+            { "value": "prime", "label": "Prime" }
+          ]
+        }
       ],
-      "defaultData": { "contributionType": "donate", "value": 0 },
+      "defaultData": { "contributionType": "donate", "operation": "set", "value": 0, "updateTimer": false, "tier": "1000" },
       "outputSchema": [
         { "path": "type", "type": "string", "description": "Tipo corrigido." },
         { "path": "total", "type": "number", "description": "Novo total." },
-        { "path": "timerChanged", "type": "boolean", "description": "Sempre falso." }
+        { "path": "timerChanged", "type": "boolean", "description": "Verdadeiro quando o ajuste altera o tempo restante." }
       ]
     },
     {
@@ -699,20 +722,34 @@
           },
           { "type": "trigger.twitch.subscribe", "id": "twitch-subscribe" },
           {
+            "type": "logic.if",
+            "id": "exclude-gift-recipient",
+            "left": { "kind": "expression", "expression": "{{ $trigger.metadata.isGift }}" },
+            "op": "neq",
+            "right": { "kind": "literal", "value": true }
+          },
+          {
             "type": "action.x.catopanda-subathon.record-sub",
             "id": "record-subscribe",
             "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
             "count": { "mode": "fixed", "value": 1 },
-            "eventKey": { "mode": "expression", "expression": "twitch:subscribe:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "eventKey": { "mode": "expression", "expression": "twitch:subscribe:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}" },
             "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
           },
           { "type": "trigger.twitch.resub", "id": "twitch-resub" },
+          {
+            "type": "logic.if",
+            "id": "exclude-gift-resub",
+            "left": { "kind": "expression", "expression": "{{ !!($trigger.metadata.raw && ($trigger.metadata.raw.isGift || $trigger.metadata.raw.is_gift)) }}" },
+            "op": "neq",
+            "right": { "kind": "literal", "value": true }
+          },
           {
             "type": "action.x.catopanda-subathon.record-sub",
             "id": "record-resub",
             "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
             "count": { "mode": "fixed", "value": 1 },
-            "eventKey": { "mode": "expression", "expression": "twitch:resub:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "eventKey": { "mode": "expression", "expression": "twitch:resub:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}" },
             "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
           },
           { "type": "trigger.twitch.subGift", "id": "twitch-sub-gift", "minCount": 1 },
@@ -721,23 +758,27 @@
             "id": "record-sub-gift",
             "tier": { "mode": "expression", "expression": "{{ $trigger.metadata.tier }}" },
             "count": { "mode": "expression", "expression": "{{ $trigger.metadata.total }}" },
-            "eventKey": { "mode": "expression", "expression": "twitch:gift:{{ $trigger.actorId }}:{{ $trigger.triggeredAt }}" },
+            "eventKey": { "mode": "expression", "expression": "twitch:gift:{{ ($trigger.metadata.raw && $trigger.metadata.raw.message_id) || ($trigger.actorId + ':' + $trigger.triggeredAt) }}" },
             "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" }
           }
         ],
         "edges": [
           { "id": "e-bits", "source": "twitch-bits", "target": "record-bits" },
-          { "id": "e-subscribe", "source": "twitch-subscribe", "target": "record-subscribe" },
-          { "id": "e-resub", "source": "twitch-resub", "target": "record-resub" },
+          { "id": "e-subscribe", "source": "twitch-subscribe", "target": "exclude-gift-recipient" },
+          { "id": "e-subscribe-not-gift", "source": "exclude-gift-recipient", "target": "record-subscribe", "sourceHandle": "true" },
+          { "id": "e-resub", "source": "twitch-resub", "target": "exclude-gift-resub" },
+          { "id": "e-resub-not-gift", "source": "exclude-gift-resub", "target": "record-resub", "sourceHandle": "true" },
           { "id": "e-sub-gift", "source": "twitch-sub-gift", "target": "record-sub-gift" }
         ],
         "layout": {
           "twitch-bits": { "x": 0, "y": 0 },
           "record-bits": { "x": 380, "y": 0 },
           "twitch-subscribe": { "x": 0, "y": 200 },
-          "record-subscribe": { "x": 380, "y": 200 },
+          "exclude-gift-recipient": { "x": 380, "y": 200 },
+          "record-subscribe": { "x": 760, "y": 200 },
           "twitch-resub": { "x": 0, "y": 400 },
-          "record-resub": { "x": 380, "y": 400 },
+          "exclude-gift-resub": { "x": 380, "y": 400 },
+          "record-resub": { "x": 760, "y": 400 },
           "twitch-sub-gift": { "x": 0, "y": 600 },
           "record-sub-gift": { "x": 380, "y": 600 }
         }
@@ -746,7 +787,7 @@
     {
       "id": "catopanda-subathon-livepix",
       "name": "CatOPanda Subathon: LivePix pronta",
-      "description": "Cada pagamento do plugin LivePix vira Donate no subathon, com deduplicação pela chave do LivePix. Requer o plugin LivePix instalado. Importa desligado; revise e ative.",
+      "description": "Cada pagamento vira Donate uma vez por chave e confirma a contabilização ao dashboard. Requer o LivePix com suporte a recuperação e confirmação. Importa desligado; revise e ative.",
       "flow": {
         "schemaVersion": 1,
         "id": "tpl-catopanda-subathon-livepix",
@@ -761,14 +802,22 @@
             "eventKey": { "mode": "expression", "expression": "{{ $trigger.metadata.eventKey }}" },
             "actorName": { "mode": "expression", "expression": "{{ $trigger.actorDisplayName }}" },
             "source": { "mode": "fixed", "value": "livepix" }
+          },
+          {
+            "type": "action.x.livepix.confirm-accounted",
+            "id": "confirm-livepix",
+            "eventKey": { "mode": "expression", "expression": "{{ $trigger.metadata.eventKey }}" },
+            "accounted": { "mode": "expression", "expression": "{{ $json.accepted || $json.duplicate }}" }
           }
         ],
         "edges": [
-          { "id": "e-donate", "source": "livepix-donation", "target": "record-donate" }
+          { "id": "e-donate", "source": "livepix-donation", "target": "record-donate" },
+          { "id": "e-confirm", "source": "record-donate", "target": "confirm-livepix" }
         ],
         "layout": {
           "livepix-donation": { "x": 0, "y": 0 },
-          "record-donate": { "x": 380, "y": 0 }
+          "record-donate": { "x": 380, "y": 0 },
+          "confirm-livepix": { "x": 760, "y": 0 }
         }
       }
     },

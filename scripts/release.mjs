@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { repository, writeCatalog } from "./build-catalog.mjs";
+import { changelogSection } from "./versioning.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const runGh = (...args) => execFileSync("gh", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
@@ -15,6 +16,9 @@ export async function publishRelease({ environment = process.env, gh = runGh, fe
     throw new Error(`A release exige a tag ${tag} no repositório ${repository}`);
   }
   if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error("Este catálogo distribui apenas releases estáveis");
+  const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8").replace(/\r\n/g, "\n");
+  const notes = changelogSection(changelog, manifest.version);
+  if (!notes) throw new Error(`O CHANGELOG não tem a seção ${manifest.version}; prepare a versão com npm run release:prepare`);
   const releases = JSON.parse(gh("api", `repos/${repository}/releases`, "--paginate", "--slurp")).flat();
   if (releases.some((release) => release.tag_name === tag)) {
     throw new Error(`${tag} já existe. Não sobrescreva artefatos; use uma nova versão ou conclua o draft existente.`);
@@ -34,7 +38,7 @@ export async function publishRelease({ environment = process.env, gh = runGh, fe
   // The catalog and ZIP become public together: no public catalog points at a missing ZIP.
   gh("release", "create", tag, archive, `${archive}.sha256`, catalog,
     "--repo", repository, "--verify-tag", "--draft", "--title", `CatOPanda Subathon ${manifest.version}`,
-    "--notes-file", join(root, "CHANGELOG.md"));
+    "--notes", notes);
   gh("release", "edit", tag, "--repo", repository, "--draft=false", "--latest");
   return `https://github.com/${repository}/releases/tag/${tag}`;
 }

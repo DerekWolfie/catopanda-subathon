@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { publishRelease } from "../scripts/release.mjs";
 import { repository } from "../scripts/build-catalog.mjs";
+import { changelogSection } from "../scripts/versioning.mjs";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin/manifest.json", import.meta.url), "utf8"));
 const tag = `v${manifest.version}`;
@@ -24,6 +25,12 @@ test("release assembles all assets in a draft before making the catalog public",
   assert.ok(calls[1].includes("dist/listing.json"));
   assert.ok(calls[1].some((arg) => arg.endsWith(".zip.sha256")));
   assert.ok(calls[2].includes("--draft=false"));
+  // The release shows only this version's notes, not the whole changelog.
+  const notes = calls[1][calls[1].indexOf("--notes") + 1];
+  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.equal(notes, changelogSection(changelog, manifest.version));
+  assert.ok(notes.length > 0);
+  assert.ok(!notes.includes("## "));
 });
 
 test("release preserves the previous public catalog and never overwrites an existing release", async () => {
