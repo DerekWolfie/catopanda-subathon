@@ -1,12 +1,13 @@
 # CatOPanda Subathon
 
-Cronômetro persistente, metas de Donate, Subs e Bits e sete overlays para OBS,
-integrados aos flows do **OSC Flow Studio 0.5.x**. Recebe contribuições de Twitch,
+Cronômetro persistente, metas de Donate, Subs e Bits com situação (Pendente, Em andamento,
+Concluída), nove overlays para OBS e um painel no navegador para metas, cronômetro e
+testes de alertas, integrados aos flows do **OSC Flow Studio 0.5.x**. Recebe contribuições de Twitch,
 LivePix e outros gatilhos por ações e fórmulas.
 
 | Contrato | Valor |
 | --- | --- |
-| Versão do plugin | 0.4.6 |
+| Versão do plugin | 0.4.7 |
 | OSC Flow Studio | `>=0.5.0 <0.6.0` |
 | Pacote | `io.github.osc-flow-studio.catopanda-subathon` |
 | ID de blocos e configurações | `catopanda-subathon` |
@@ -15,7 +16,7 @@ LivePix e outros gatilhos por ações e fórmulas.
 
 ## Instalação
 
-1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.6.zip` da release ou gere
+1. Baixe `io.github.osc-flow-studio.catopanda-subathon-0.4.7.zip` da release ou gere
    localmente. No Studio, abra **Integrações → Install from zip**, revise e confirme.
 2. Configure porta, conversões de tempo, metas, efeitos e tema; ative a integração.
 3. Importe os templates **Twitch pronta** e **acompanhar no console** conforme necessário.
@@ -71,16 +72,16 @@ npm run catalog
 `npm run package` executa a validação do schema, as regras de pacote e os testes
 antes de gerar:
 
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.6.zip`
-- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.6.zip.sha256`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.7.zip`
+- `dist/io.github.osc-flow-studio.catopanda-subathon-0.4.7.zip.sha256`
 
 `npm run catalog` gera `dist/listing.json`, com tamanho e SHA-256 do ZIP real.
 O ZIP contém somente `plugin/`, incluindo os assets dos overlays, com o manifest
 na raiz. Os scripts de publicação e as dependências de desenvolvimento ficam fora.
 
 ```powershell
-Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.6.zip -Algorithm SHA256
-Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.6.zip.sha256
+Get-FileHash dist/io.github.osc-flow-studio.catopanda-subathon-0.4.7.zip -Algorithm SHA256
+Get-Content dist/io.github.osc-flow-studio.catopanda-subathon-0.4.7.zip.sha256
 ```
 
 Use `npm run check` para validar sem gerar artefatos. Para inspecionar os overlays
@@ -108,15 +109,15 @@ Primeiro envio, usando o `origin` já configurado:
 npm ci
 npm run package
 git add .
-git commit -m "Prepare CatOPanda Subathon 0.4.6 package"
+git commit -m "Prepare CatOPanda Subathon 0.4.7 package"
 git push -u origin main
 ```
 
 Aguarde **Validate plugin** passar no Windows e Linux. Depois publique a tag:
 
 ```powershell
-git tag v0.4.6
-git push origin v0.4.6
+git tag v0.4.7
+git push origin v0.4.7
 ```
 
 O workflow **Release OSC Flow Studio package** valida novamente, recupera o catálogo
@@ -173,7 +174,8 @@ esse histórico automaticamente e interrompe a publicação se não conseguir l�
 ## Validação
 
 Os testes cobrem contribuições, deduplicação, persistência, metas legadas, cronômetro,
-Prime, rotas HTTP/SSE, porta ocupada e encerramento com conexões abertas. Também
+Prime, situação das metas (inclusive estado salvo pela 0.4.6), painel e suas proteções
+contra outros sites, rotas HTTP/SSE, porta ocupada e encerramento com conexões abertas. Também
 conferem ZIPs reproduzíveis, hashes do catálogo, preservação do histórico e publicação
 com GitHub simulado. A execução local não publica releases nem altera o Studio aberto.
 CI remoto e instalação pela fonte pública precisam ser conferidos após a publicação.

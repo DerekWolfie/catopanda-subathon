@@ -2,7 +2,7 @@
   "$schema": "../sdk/community-plugin-manifest.schema.json",
   "id": "catopanda-subathon",
   "name": "CatOPanda Subathon",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "packageId": "io.github.osc-flow-studio.catopanda-subathon",
   "engines": { "oscFlowStudio": ">=0.5.0 <0.6.0" },
   "author": { "name": "DerekWolfie", "url": "https://github.com/DerekWolfie" },
@@ -164,7 +164,7 @@
         "key": "goalsSection",
         "type": "separator",
         "label": "Roteiro de metas",
-        "description": "A ordem numérica controla a sequência exibida nos overlays.",
+        "description": "A ordem numérica controla a sequência exibida nos overlays. A situação de cada meta (Pendente, Em andamento, Concluída) é definida pelo bloco CatOPanda: definir situação da meta e não depende desta tabela.",
         "tab": "goals"
       },
       {
@@ -255,8 +255,8 @@
       {
         "key": "celebrateGoals",
         "type": "boolean",
-        "label": "Confete ao concluir meta",
-        "description": "Chuva de confete nas cores da paleta e faixa com o nome da meta no overlay Alertas; o cartão da meta ganha destaque nos outros overlays.",
+        "label": "Celebrar metas",
+        "description": "Confete e faixa no overlay Alertas quando uma meta é alcançada; faixa quando ela entra em andamento ou é concluída. O cartão da meta ganha destaque nos outros overlays.",
         "default": true,
         "tab": "overlays"
       },
@@ -558,6 +558,7 @@
             { "value": "totals", "label": "Somente totais" },
             { "value": "timer", "label": "Somente cronômetro" },
             { "value": "ledger", "label": "Somente deduplicação" },
+            { "value": "goal-status", "label": "Somente situação das metas" },
             { "value": "all", "label": "Tudo" }
           ]
         }
@@ -566,6 +567,44 @@
       "outputSchema": [
         { "path": "scope", "type": "string", "description": "Escopo restaurado." },
         { "path": "ok", "type": "boolean", "description": "Sempre verdadeiro ao concluir." }
+      ]
+    },
+    {
+      "type": "action.x.catopanda-subathon.set-goal-status",
+      "label": "CatOPanda: definir situação da meta",
+      "category": "CatOPanda Subathon",
+      "description": "Marca uma meta como Pendente, Em andamento ou Concluída. Só uma meta fica em andamento: iniciar outra devolve a anterior para Pendente.",
+      "role": "action",
+      "fields": [
+        {
+          "key": "goalId",
+          "label": "Meta",
+          "kind": "resource-select",
+          "resourceKey": "goals",
+          "helpText": "Escolha uma meta cadastrada ou um atalho. Os atalhos servem para comandos de chat: iniciar a próxima meta alcançada ou concluir a que está em andamento."
+        },
+        {
+          "key": "status",
+          "label": "Situação",
+          "kind": "select",
+          "options": [
+            { "value": "in-progress", "label": "Em andamento" },
+            { "value": "done", "label": "Concluída" },
+            { "value": "pending", "label": "Pendente" }
+          ]
+        }
+      ],
+      "defaultData": { "goalId": "", "status": "in-progress" },
+      "outputSchema": [
+        { "path": "changed", "type": "boolean", "description": "Falso quando a meta já estava nessa situação." },
+        { "path": "goalId", "type": "string", "description": "ID da meta alterada; com o atalho de todas as alcançadas, a primeira." },
+        { "path": "title", "type": "string", "description": "Título da meta alterada." },
+        { "path": "status", "type": "string", "description": "pending, in-progress ou done." },
+        { "path": "statusLabel", "type": "string", "description": "Pendente, Em andamento ou Concluída." },
+        { "path": "count", "type": "number", "description": "Quantas metas o bloco alcançou." },
+        { "path": "goalIds", "type": "array", "description": "IDs de todas as metas alcançadas pelo bloco." },
+        { "path": "activeGoalId", "type": "string", "description": "Meta em andamento depois da alteração, ou vazio." },
+        { "path": "activeTitle", "type": "string", "description": "Título da meta em andamento, ou vazio." }
       ]
     },
     {
@@ -585,9 +624,15 @@
         { "path": "totals.addedLabel", "type": "string", "description": "Tempo somado pelas contribuições, por exemplo 12h 05min." },
         { "path": "currentGoal.title", "type": "string", "description": "Título da meta atual." },
         { "path": "currentGoal.progress", "type": "number", "description": "Progresso da meta atual em porcentagem." },
+        { "path": "activeGoal.id", "type": "string", "description": "ID da meta em andamento." },
+        { "path": "activeGoal.title", "type": "string", "description": "Título da meta em andamento." },
+        { "path": "goalCounts.reached", "type": "number", "description": "Metas alcançadas, qualquer que seja a situação." },
+        { "path": "goalCounts.pending", "type": "number", "description": "Metas alcançadas que ainda estão pendentes." },
+        { "path": "goalCounts.inProgress", "type": "number", "description": "0 ou 1: a meta em andamento." },
+        { "path": "goalCounts.done", "type": "number", "description": "Metas concluídas." },
         { "path": "goals", "type": "array", "description": "Metas calculadas." },
-        { "path": "goalErrors", "type": "array", "description": "Linhas de metas que precisam de corre??o na configura??o." },
-        { "path": "urls", "type": "object", "description": "URLs para Browser Source do OBS, inclusive urls.alerts." }
+        { "path": "goalErrors", "type": "array", "description": "Linhas de metas que precisam de correção na configuração." },
+        { "path": "urls", "type": "object", "description": "URLs para Browser Source do OBS, inclusive urls.alerts, urls.goalsActive e urls.goalsList." }
       ]
     },
     {
@@ -632,9 +677,9 @@
     },
     {
       "type": "trigger.x.catopanda-subathon.goal-completed",
-      "label": "CatOPanda: meta concluída",
+      "label": "CatOPanda: meta alcançada",
       "category": "CatOPanda Subathon",
-      "description": "Dispara ao cruzar uma meta; o evento não acrescenta tempo.",
+      "description": "Dispara quando o total cruza o alvo de uma meta; o evento não acrescenta tempo. A situação depois disso (Em andamento, Concluída) tem o gatilho próprio.",
       "role": "trigger",
       "matchFields": [
         { "nodeField": "goalId", "eventField": "goalId", "mode": "equals" },
@@ -661,9 +706,46 @@
         { "path": "metadata.title", "type": "string", "description": "Texto da meta." },
         { "path": "metadata.target", "type": "number", "description": "Alvo da meta." },
         { "path": "metadata.targetLabel", "type": "string", "description": "Alvo formatado." },
-        { "path": "metadata.completedCount", "type": "number", "description": "Quantas metas já foram concluídas." },
+        { "path": "metadata.completedCount", "type": "number", "description": "Quantas metas já foram alcançadas." },
         { "path": "metadata.nextTitle", "type": "string", "description": "Título da próxima meta, ou vazio." },
         { "path": "metadata.timerChanged", "type": "boolean", "description": "Sempre falso." }
+      ]
+    },
+    {
+      "type": "trigger.x.catopanda-subathon.goal-status-changed",
+      "label": "CatOPanda: situação da meta alterada",
+      "category": "CatOPanda Subathon",
+      "description": "Dispara quando uma meta passa a Em andamento, Concluída ou volta a Pendente.",
+      "role": "trigger",
+      "matchFields": [
+        { "nodeField": "status", "eventField": "status", "mode": "equals" }
+      ],
+      "fields": [
+        {
+          "key": "status",
+          "label": "Nova situação",
+          "kind": "select",
+          "options": [
+            { "value": "", "label": "Todas" },
+            { "value": "in-progress", "label": "Em andamento" },
+            { "value": "done", "label": "Concluída" },
+            { "value": "pending", "label": "Pendente" }
+          ]
+        }
+      ],
+      "defaultData": { "status": "" },
+      "outputSchema": [
+        { "path": "metadata.goalId", "type": "string", "description": "ID configurado da meta." },
+        { "path": "metadata.type", "type": "string", "description": "Tipo da meta." },
+        { "path": "metadata.title", "type": "string", "description": "Texto da meta." },
+        { "path": "metadata.target", "type": "number", "description": "Alvo da meta." },
+        { "path": "metadata.targetLabel", "type": "string", "description": "Alvo formatado." },
+        { "path": "metadata.reached", "type": "boolean", "description": "Verdadeiro quando o total já cruzou o alvo." },
+        { "path": "metadata.status", "type": "string", "description": "pending, in-progress ou done." },
+        { "path": "metadata.statusLabel", "type": "string", "description": "Pendente, Em andamento ou Concluída." },
+        { "path": "metadata.previousStatus", "type": "string", "description": "Situação anterior." },
+        { "path": "metadata.activeGoalId", "type": "string", "description": "Meta em andamento depois da alteração, ou vazio." },
+        { "path": "metadata.activeTitle", "type": "string", "description": "Título da meta em andamento, ou vazio." }
       ]
     },
     {
@@ -843,7 +925,14 @@
             "type": "action.console.log",
             "id": "log-goal",
             "level": "info",
-            "message": { "mode": "expression", "expression": "Meta concluída: {{ $trigger.metadata.title }}" }
+            "message": { "mode": "expression", "expression": "Meta alcançada: {{ $trigger.metadata.title }}" }
+          },
+          { "type": "trigger.x.catopanda-subathon.goal-status-changed", "id": "on-goal-status", "status": "" },
+          {
+            "type": "action.console.log",
+            "id": "log-goal-status",
+            "level": "info",
+            "message": { "mode": "expression", "expression": "{{ $trigger.metadata.title }}: {{ $trigger.metadata.statusLabel }}" }
           },
           { "type": "trigger.x.catopanda-subathon.timer-warning", "id": "on-warning" },
           {
@@ -856,6 +945,7 @@
         "edges": [
           { "id": "e-contribution", "source": "on-contribution", "target": "log-contribution" },
           { "id": "e-goal", "source": "on-goal", "target": "log-goal" },
+          { "id": "e-goal-status", "source": "on-goal-status", "target": "log-goal-status" },
           { "id": "e-warning", "source": "on-warning", "target": "log-warning" }
         ],
         "layout": {
@@ -863,8 +953,47 @@
           "log-contribution": { "x": 380, "y": 0 },
           "on-goal": { "x": 0, "y": 200 },
           "log-goal": { "x": 380, "y": 200 },
-          "on-warning": { "x": 0, "y": 400 },
-          "log-warning": { "x": 380, "y": 400 }
+          "on-goal-status": { "x": 0, "y": 400 },
+          "log-goal-status": { "x": 380, "y": 400 },
+          "on-warning": { "x": 0, "y": 600 },
+          "log-warning": { "x": 380, "y": 600 }
+        }
+      }
+    },
+    {
+      "id": "catopanda-subathon-goal-status-chat",
+      "name": "CatOPanda Subathon: situação das metas pelo chat",
+      "description": "!metainicia coloca em andamento a próxima meta alcançada; !metaconcluida conclui a que está em andamento. Só broadcaster e moderadores. Importa desligado; revise e ative.",
+      "flow": {
+        "schemaVersion": 1,
+        "id": "tpl-catopanda-subathon-goal-status-chat",
+        "name": "CatOPanda Subathon: situação das metas pelo chat",
+        "enabled": false,
+        "nodes": [
+          { "type": "trigger.twitch.command", "id": "command-start", "commandName": "metainicia", "allowedRoles": ["broadcaster", "moderator"] },
+          {
+            "type": "action.x.catopanda-subathon.set-goal-status",
+            "id": "start-next-goal",
+            "goalId": "@next",
+            "status": { "mode": "fixed", "value": "in-progress" }
+          },
+          { "type": "trigger.twitch.command", "id": "command-done", "commandName": "metaconcluida", "allowedRoles": ["broadcaster", "moderator"] },
+          {
+            "type": "action.x.catopanda-subathon.set-goal-status",
+            "id": "finish-active-goal",
+            "goalId": "@active",
+            "status": { "mode": "fixed", "value": "done" }
+          }
+        ],
+        "edges": [
+          { "id": "e-start", "source": "command-start", "target": "start-next-goal" },
+          { "id": "e-done", "source": "command-done", "target": "finish-active-goal" }
+        ],
+        "layout": {
+          "command-start": { "x": 0, "y": 0 },
+          "start-next-goal": { "x": 380, "y": 0 },
+          "command-done": { "x": 0, "y": 200 },
+          "finish-active-goal": { "x": 380, "y": 200 }
         }
       }
     }

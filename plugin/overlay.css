@@ -685,7 +685,8 @@ body.is-ready {
   background: var(--purple);
 }
 
-.footer-goal--done .footer-goal__copy > strong {
+.footer-goal--done .footer-goal__copy > strong,
+.footer-goal--done .footer-goal__copy > strong .marquee__inner {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
 }
@@ -707,6 +708,47 @@ body.is-ready {
 
 .fx-on .footer-goal--current::after {
   animation: live-ping 2.2s ease-out infinite;
+}
+
+/* Reached but not done yet: full strength, filled dot and a check, never struck through. */
+.footer-goal--reached::after {
+  border-color: var(--purple);
+  background: var(--purple);
+}
+
+.footer-goal--active {
+  border-color: var(--accent);
+  --glass-bg: color-mix(in srgb, var(--accent) 24%, rgba(40, 16, 66, 0.9));
+}
+
+.footer-goal--active::before {
+  opacity: 1;
+}
+
+.footer-goal--active::after {
+  border-color: #fff;
+  background: var(--accent);
+  box-shadow: 0 0 0 0.25cqw color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.fx-on .footer-goal--active::after {
+  animation: live-ping 1.6s ease-out infinite;
+}
+
+/* "Em andamento" tag on the goal in progress, in the corner the check uses elsewhere. */
+.goal-live {
+  position: absolute;
+  top: 0.5cqw;
+  right: 0.5cqw;
+  padding: 0.15cqw 0.55cqw;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: clamp(9px, 0.62cqw, 13px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* Check mark drawn with borders, no glyph. */
@@ -879,6 +921,19 @@ body.is-ready {
 
 .fx-on .totem-card.is-current .totem-card__index {
   box-shadow: 0 0 0 0.35cqw var(--panel), 0 0 1.2cqw color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+.totem-card.is-active {
+  border-color: var(--accent);
+  --glass-bg: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, 0.06));
+}
+
+.totem-card.is-active::before {
+  opacity: 1;
+}
+
+.fx-on .totem-card.is-active .totem-card__index {
+  animation: live-ping 1.6s ease-out infinite;
 }
 
 .totem-card__content {
@@ -1158,6 +1213,369 @@ body.is-ready {
   text-shadow: 0 2px 3px rgba(20, 8, 38, 0.96), 0 0.4cqw 1cqw rgba(20, 8, 38, 0.68);
 }
 
+/*
+ * Meta em andamento: one card that fills its Browser Source (up to 960px) and
+ * sizes its type from its own width, so a 900x220 source and a full canvas both read.
+ * With no goal in progress the card fades out and the source shows nothing.
+ */
+.view--goals-active.is-active {
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.active-goal {
+  width: calc(100% - 2 * clamp(8px, 1.2cqw, 24px));
+  max-width: 960px;
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: clamp(56px, 15cqi, 140px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(10px, 3cqi, 28px);
+  padding: clamp(10px, 2.4cqi, 24px) clamp(14px, 3.4cqi, 32px) clamp(10px, 2.4cqi, 24px) clamp(10px, 2.4cqi, 24px);
+  border-color: color-mix(in srgb, var(--accent) 80%, transparent);
+  border-radius: clamp(14px, 2.6cqi, 26px);
+  --glass-bg: rgba(31, 17, 55, 0.86);
+  transition: opacity 360ms var(--ease-enter), transform 420ms var(--ease-enter);
+}
+
+.active-goal.is-empty {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+.active-goal__mascot {
+  position: relative;
+  aspect-ratio: 1;
+}
+
+.active-goal__mascot img {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(10, 4, 24, 0.38));
+}
+
+.fx-on .active-goal__mascot img {
+  animation: mascot-float 5.2s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.active-goal__copy {
+  min-width: 0;
+  display: grid;
+  gap: clamp(4px, 1cqi, 10px);
+}
+
+.active-goal__badge {
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0;
+  padding: 0.3em 0.8em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: clamp(11px, 2.1cqi, 18px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.active-goal__badge i {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.fx-on .active-goal__badge i {
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes live-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.active-goal__title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 5.4cqi, 54px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.active-goal__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  margin: 0;
+  color: #e8dcf5;
+  font-size: clamp(12px, 2.3cqi, 22px);
+  font-weight: 800;
+}
+
+.active-goal__meta span {
+  color: var(--accent);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.active-goal__meta b {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Lista de metas: fills a narrow Browser Source; on a full canvas it keeps to the
+ * left edge at 560px, like the totem. The goal in progress leads the list.
+ */
+.goals-list {
+  position: absolute;
+  top: clamp(8px, 1.2cqw, 24px);
+  bottom: clamp(8px, 1.2cqw, 24px);
+  left: clamp(8px, 1.2cqw, 24px);
+  width: calc(100% - 2 * clamp(8px, 1.2cqw, 24px));
+  max-width: 560px;
+  container-type: inline-size;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(8px, 2.4cqi, 16px);
+  padding: clamp(10px, 3cqi, 20px);
+  overflow: hidden;
+  border-radius: clamp(14px, 4cqi, 26px);
+  --glass-bg: rgba(24, 12, 43, 0.84);
+}
+
+.goals-list::before {
+  display: none;
+}
+
+.goals-list::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, var(--coral) 0 34%, var(--purple) 34% 67%, var(--cyan) 67%);
+}
+
+.goals-list__header {
+  display: grid;
+  grid-template-columns: clamp(48px, 20cqi, 110px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(8px, 3cqi, 16px);
+}
+
+.goals-list__header img {
+  width: 100%;
+  aspect-ratio: 6 / 5;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(8, 3, 20, 0.3));
+}
+
+.goals-list__header div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.goals-list__header span {
+  color: #edcbfa;
+  font-size: clamp(10px, 2.6cqi, 14px);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.goals-list__header strong {
+  font-family: var(--font-display);
+  font-size: clamp(18px, 6.4cqi, 34px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.goals-list__header small {
+  color: #d9cde9;
+  font-size: clamp(11px, 2.8cqi, 15px);
+  font-weight: 800;
+}
+
+.goals-list__viewport {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--purple) var(--panel);
+}
+
+.goals-list__viewport.is-scrolling {
+  overflow-y: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 4%, #000 96%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 4%, #000 96%, transparent);
+}
+
+.goals-list__viewport:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+
+.goals-list__track {
+  display: grid;
+  gap: clamp(6px, 1.8cqi, 10px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-goal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(8px, 2.6cqi, 14px);
+  padding: clamp(8px, 2.4cqi, 14px) clamp(10px, 3cqi, 16px);
+  border-radius: clamp(10px, 3cqi, 16px);
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.list-goal__marker {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #b6a7cc;
+  border-radius: 50%;
+}
+
+.list-goal__body {
+  min-width: 0;
+  display: grid;
+  gap: clamp(3px, 1cqi, 6px);
+}
+
+.list-goal__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
+.list-goal__kind {
+  color: var(--accent);
+  font-size: clamp(10px, 2.5cqi, 13px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.list-goal__chip {
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: #f1e4ff;
+  font-size: clamp(9px, 2.3cqi, 12px);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.list-goal__chip[hidden] {
+  display: none;
+}
+
+.list-goal__title {
+  font-family: var(--font-display);
+  font-size: clamp(15px, 5cqi, 26px);
+  line-height: 1.08;
+}
+
+.list-goal__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-goal__bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.list-goal__amount {
+  color: #d9cce9;
+  font-size: clamp(10px, 2.6cqi, 14px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.list-goal__percent {
+  font-family: var(--font-display);
+  font-size: clamp(14px, 4.4cqi, 24px);
+  font-variant-numeric: tabular-nums;
+}
+
+.list-goal--current {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.list-goal--current .list-goal__marker {
+  border-color: #fff;
+  background: var(--accent);
+}
+
+.list-goal--reached .list-goal__marker {
+  border-color: var(--purple);
+  background: var(--purple);
+}
+
+.list-goal--reached .list-goal__chip {
+  border-color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 40%, transparent);
+}
+
+.list-goal--active {
+  border-color: var(--accent);
+  --glass-bg: color-mix(in srgb, var(--accent) 22%, rgba(40, 16, 66, 0.9));
+}
+
+.list-goal--active::before {
+  opacity: 1;
+}
+
+.list-goal--active .list-goal__marker {
+  border-color: #fff;
+  background: var(--accent);
+}
+
+.fx-on .list-goal--active .list-goal__marker {
+  animation: live-ping 1.6s ease-out infinite;
+}
+
+.list-goal--active .list-goal__chip {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.list-goal--done {
+  opacity: 0.62;
+}
+
+.list-goal--done .list-goal__marker {
+  border-color: var(--purple);
+  background: var(--purple);
+}
+
+.list-goal--done .list-goal__title,
+.list-goal--done .list-goal__title .marquee__inner {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
 /* Alerts overlay: transparent layer for toasts, banners and confetti. */
 .view--alerts {
   background: transparent;
@@ -1212,16 +1630,6 @@ body.is-ready {
 [data-alerts-position^="bottom"] .toast-stack {
   top: auto;
   bottom: 2cqw;
-}
-
-/* The banner takes the opposite edge of the toasts so the two never stack. */
-[data-alerts-position^="top"] .celebration {
-  top: auto;
-  bottom: 8%;
-}
-
-[data-alerts-position="top-center"] .celebration {
-  bottom: 8%;
 }
 
 .toast {
@@ -1290,73 +1698,604 @@ body.is-ready {
   font-weight: 800;
 }
 
-/* Goal celebration banner and card burst. */
+/*
+ * Epic banners. The layer fills the alerts source and centers the card; ?banner=top
+ * or ?banner=bottom moves it. Every decoration and animation needs .fx-on, so with
+ * effects off or reduced motion the same card shows still.
+ */
 .celebration {
+  --epic-a: var(--coral);
+  --epic-b: var(--purple);
+  --epic-glow: var(--epic-a);
   position: absolute;
-  left: 50%;
-  top: 8%;
+  inset: 0;
   z-index: 21;
+  place-items: center;
+  padding: 6% 4%;
+  overflow: hidden;
+  color: #fff;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 500ms var(--ease-enter);
+}
+
+[data-banner-position="top"] .celebration { align-items: start; }
+[data-banner-position="bottom"] .celebration { align-items: end; }
+
+.celebration.is-out { opacity: 0; }
+
+.celebration--goal-active { --epic-a: var(--cyan); --epic-b: var(--purple); }
+.celebration--goal-done { --epic-a: var(--purple); --epic-b: #d69a00; --epic-glow: #ffd166; }
+.celebration--warning { --epic-a: #ff2d3d; --epic-b: #ff8a3d; --epic-glow: var(--coral); }
+.celebration--finished { --epic-a: var(--purple); --epic-b: var(--cyan); --epic-glow: var(--purple); }
+
+.epic__decor {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.fx-on .epic__decor { display: block; }
+
+.epic__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+}
+
+/* Card */
+.epic__card {
+  position: relative;
+  z-index: 1;
   display: grid;
   justify-items: center;
-  gap: 0.25cqw;
-  padding: 1.1cqw 2.4cqw;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 1.4cqw;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--purple) 80%, transparent), color-mix(in srgb, var(--coral) 80%, transparent));
-  box-shadow: 0 0 3cqw color-mix(in srgb, var(--purple) 60%, transparent), 0 1.4cqw 3cqw rgba(9, 3, 22, 0.4);
-  text-align: center;
-  opacity: 0;
-  transform: translate(-50%, -1.6cqw) scale(0.9);
-  transition: opacity 320ms var(--ease-enter), transform 380ms var(--ease-enter);
+  gap: clamp(4px, 0.55cqw, 12px);
+  min-width: min(36cqw, 100%);
+  max-width: min(74cqw, 100%);
+  padding: clamp(18px, 2cqw, 40px) clamp(24px, 3.6cqw, 72px) clamp(20px, 2.2cqw, 44px);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: clamp(18px, 2cqw, 40px);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--epic-a) 85%, #1a0c2e), color-mix(in srgb, var(--epic-b) 85%, #1a0c2e));
+  box-shadow:
+    0 0 0 0.5cqw color-mix(in srgb, var(--epic-glow) 22%, transparent),
+    0 0 5cqw color-mix(in srgb, var(--epic-glow) 55%, transparent),
+    0 2cqw 5cqw rgba(9, 3, 22, 0.55),
+    inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  text-shadow: 0 2px 0 rgba(20, 6, 40, 0.35), 0 0.4cqw 1.2cqw rgba(20, 6, 40, 0.45);
+}
+
+.fx-on .celebration.is-in .epic__card {
+  animation: epic-slam 950ms cubic-bezier(0.18, 1.35, 0.32, 1) both, epic-breathe 2.6s ease-in-out 1.1s infinite;
+}
+
+.fx-on .celebration.is-out .epic__card {
+  animation: epic-exit 500ms ease-in both;
+}
+
+@keyframes epic-slam {
+  0% { transform: scale(2.6) rotate(-6deg); opacity: 0; filter: blur(16px); }
+  50% { transform: scale(0.9) rotate(1.5deg); opacity: 1; filter: blur(0); }
+  72% { transform: scale(1.06) rotate(-0.5deg); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+@keyframes epic-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+@keyframes epic-exit {
+  to { transform: scale(0.85) translateY(-4%); opacity: 0; filter: blur(8px); }
+}
+
+/* A light band crosses the card every few seconds. */
+.epic__shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
   pointer-events: none;
 }
 
-.celebration--warning {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--coral) 88%, transparent), color-mix(in srgb, #ffb347 80%, transparent));
-  box-shadow: 0 0 3cqw color-mix(in srgb, var(--coral) 60%, transparent), 0 1.4cqw 3cqw rgba(9, 3, 22, 0.4);
+.epic__shine::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  bottom: -50%;
+  left: -40%;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  opacity: 0;
+  transform: skewX(-20deg);
 }
 
-.celebration--finished {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--panel) 92%, transparent), color-mix(in srgb, var(--purple) 70%, transparent));
-  box-shadow: 0 0 3cqw color-mix(in srgb, var(--cyan) 45%, transparent), 0 1.4cqw 3cqw rgba(9, 3, 22, 0.4);
+.fx-on .celebration.is-in .epic__shine::before {
+  animation: epic-shine 2.8s ease-in-out 1s infinite;
 }
 
-.celebration--finished .celebration__title {
+@keyframes epic-shine {
+  0% { opacity: 1; transform: skewX(-20deg) translateX(0); }
+  45%, 100% { opacity: 1; transform: skewX(-20deg) translateX(560%); }
+}
+
+/* Text */
+.epic__eyebrow {
+  padding: 0.35em 1em;
+  border-radius: 999px;
+  background: rgba(15, 6, 30, 0.35);
+  font-size: clamp(13px, 1.15cqw, 24px);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.fx-on .celebration.is-in .epic__eyebrow {
+  animation: epic-eyebrow 800ms var(--ease-enter) 0.15s both;
+}
+
+@keyframes epic-eyebrow {
+  from { letter-spacing: 0.7em; opacity: 0; }
+  to { letter-spacing: 0.16em; opacity: 1; }
+}
+
+.epic__title {
+  font-family: var(--font-display);
+  font-size: clamp(34px, 5cqw, 104px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.epic__word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.epic__char { display: inline-block; }
+
+.fx-on .celebration.is-in .epic__char {
+  animation: epic-char 650ms cubic-bezier(0.2, 1.6, 0.35, 1) both;
+  animation-delay: calc(var(--i) * var(--step, 32ms) + 300ms);
+}
+
+@keyframes epic-char {
+  0% { transform: translateY(0.7em) rotate(-14deg) scale(0.2); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+.epic__detail {
+  max-width: 60ch;
+  font-size: clamp(14px, 1.3cqw, 28px);
+  font-weight: 800;
+  opacity: 0.95;
+}
+
+.fx-on .celebration.is-in .epic__detail {
+  animation: epic-rise 600ms var(--ease-enter) 0.9s both;
+}
+
+@keyframes epic-rise {
+  from { transform: translateY(0.8em); opacity: 0; }
+  to { transform: none; opacity: 0.95; }
+}
+
+.epic__sticker {
+  position: absolute;
+  top: calc(-1 * clamp(14px, 1.4cqw, 30px));
+  right: calc(-1 * clamp(10px, 1.6cqw, 34px));
+  padding: 0.3em 0.7em;
+  border-radius: 0.5em;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(16px, 1.6cqw, 34px);
+  text-shadow: none;
+  transform: rotate(10deg);
+  box-shadow: 0 0.5cqw 1.2cqw rgba(9, 3, 22, 0.4);
+}
+
+.fx-on .celebration.is-in .epic__sticker {
+  animation: epic-sticker 750ms cubic-bezier(0.2, 1.7, 0.4, 1) 0.85s both, epic-wobble 1.4s ease-in-out 1.7s infinite;
+}
+
+@keyframes epic-sticker {
+  0% { transform: scale(0) rotate(-50deg); }
+  100% { transform: scale(1) rotate(10deg); }
+}
+
+@keyframes epic-wobble {
+  0%, 100% { transform: rotate(10deg) scale(1); }
+  50% { transform: rotate(4deg) scale(1.08); }
+}
+
+/* Flash, rays, shockwave rings and light beams */
+.epic__flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--epic-glow) 70%, transparent), transparent 65%);
+  opacity: 0;
+}
+
+[data-banner-position="top"] .epic__flash { background-position: 0 -30%; }
+[data-banner-position="bottom"] .epic__flash { background-position: 0 30%; }
+
+.celebration.is-in .epic__flash { animation: epic-flash 1100ms ease-out both; }
+
+@keyframes epic-flash {
+  0% { opacity: 0; }
+  10% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+.epic__rays,
+.epic__rings,
+.epic__stars {
+  display: none;
+}
+
+.fx-on .epic__rays,
+.fx-on .epic__rings,
+.fx-on .epic__stars {
+  display: block;
+}
+
+.epic__rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 130cqw;
+  height: 130cqw;
+  margin: -65cqw 0 0 -65cqw;
+  border-radius: 50%;
+  -webkit-mask-image: radial-gradient(circle, #000 8%, transparent 58%);
+  mask-image: radial-gradient(circle, #000 8%, transparent 58%);
+}
+
+.epic__rays::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--epic-glow) 40%, transparent) 0deg 6deg, transparent 6deg 18deg);
+  animation: epic-spin 22s linear infinite;
+}
+
+.celebration.is-in .epic__rays { animation: epic-rays-in 900ms var(--ease-enter) both; }
+
+@keyframes epic-rays-in {
+  from { opacity: 0; transform: scale(0.2); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes epic-spin {
+  to { transform: rotate(360deg); }
+}
+
+.epic__rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+.epic__rings i {
+  position: absolute;
+  left: -12cqw;
+  top: -12cqw;
+  width: 24cqw;
+  height: 24cqw;
+  border: 0.35cqw solid var(--epic-glow);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.celebration.is-in .epic__rings i { animation: epic-ring 1.5s cubic-bezier(0.1, 0.6, 0.3, 1) both; }
+.celebration.is-in .epic__rings i:nth-child(2) { animation-delay: 0.22s; }
+.celebration.is-in .epic__rings i:nth-child(3) { animation-delay: 0.44s; }
+
+@keyframes epic-ring {
+  0% { opacity: 1; transform: scale(0.15); }
+  100% { opacity: 0; transform: scale(3.4); }
+}
+
+.epic__beams i {
+  position: absolute;
+  top: -25%;
+  bottom: -25%;
+  left: -25cqw;
+  width: 14cqw;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  opacity: 0;
+  transform: skewX(-18deg);
+}
+
+.celebration.is-in .epic__beams i { animation: epic-beam 1.3s ease-in-out 0.25s both; }
+.celebration.is-in .epic__beams i:nth-child(2) { width: 7cqw; animation-delay: 0.5s; }
+
+@keyframes epic-beam {
+  0% { opacity: 0; transform: translateX(0) skewX(-18deg); }
+  15%, 85% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(150cqw) skewX(-18deg); }
+}
+
+/* Meta em andamento: live dot, pulsing glow, rings and beams that keep coming. */
+.celebration--goal-active .epic__eyebrow::before {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.55em;
+  border-radius: 50%;
+  background: #ff4d6d;
+  vertical-align: 0.05em;
+}
+
+.fx-on .celebration--goal-active .epic__eyebrow::before { animation: live-dot 1.2s ease-in-out infinite; }
+
+.fx-on .celebration--goal-active.is-in .epic__card {
+  animation: epic-slam 950ms cubic-bezier(0.18, 1.35, 0.32, 1) both, epic-live-glow 1.8s ease-in-out 1.1s infinite;
+}
+
+@keyframes epic-live-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0.5cqw color-mix(in srgb, var(--cyan) 25%, transparent), 0 0 4cqw color-mix(in srgb, var(--cyan) 60%, transparent), 0 2cqw 5cqw rgba(9, 3, 22, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 1.1cqw color-mix(in srgb, var(--purple) 35%, transparent), 0 0 7cqw color-mix(in srgb, var(--purple) 70%, transparent), 0 2cqw 5cqw rgba(9, 3, 22, 0.55);
+  }
+}
+
+.celebration--goal-active.is-in .epic__rings i {
+  animation-duration: 2.1s;
+  animation-iteration-count: infinite;
+}
+
+.celebration--goal-active .epic__beams i {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cyan) 55%, transparent), transparent);
+}
+
+.celebration--goal-active.is-in .epic__beams i {
+  animation-duration: 2.6s;
+  animation-iteration-count: infinite;
+}
+
+/* Meta concluída: a check stamp that draws itself and golden stars. Confetti comes from the canvas. */
+.epic__stamp {
+  width: clamp(56px, 6cqw, 120px);
+  height: auto;
+  margin-top: calc(-1 * clamp(44px, 4.6cqw, 96px));
+  filter: drop-shadow(0 0.4cqw 1cqw rgba(9, 3, 22, 0.45));
+}
+
+.epic__stamp-circle {
+  fill: #3ecf8e;
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.epic__stamp-mark {
+  fill: none;
+  stroke: #fff;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
+}
+
+.fx-on .celebration.is-in .epic__stamp { animation: epic-stamp 700ms cubic-bezier(0.2, 1.6, 0.35, 1) 0.35s both; }
+.fx-on .celebration.is-in .epic__stamp-mark {
+  stroke-dashoffset: 40;
+  animation: epic-draw 500ms ease-out 1s forwards;
+}
+
+@keyframes epic-stamp {
+  from { transform: scale(0) rotate(-90deg); }
+  to { transform: scale(1) rotate(0); }
+}
+
+@keyframes epic-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.epic__stars {
+  position: absolute;
+  inset: -8cqw -10cqw;
+}
+
+.epic__stars i {
+  position: absolute;
+  width: 2.2cqw;
+  height: 2.2cqw;
+  background: #ffd166;
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  opacity: 0;
+}
+
+.celebration.is-in .epic__stars i { animation: epic-twinkle 1.6s ease-in-out infinite; }
+.epic__stars i:nth-child(1) { left: 4%; top: 10%; animation-delay: 0.1s; }
+.epic__stars i:nth-child(2) { right: 6%; top: 4%; width: 3cqw; height: 3cqw; animation-delay: 0.5s; }
+.epic__stars i:nth-child(3) { left: 0; top: 55%; animation-delay: 0.9s; }
+.epic__stars i:nth-child(4) { right: 2%; top: 60%; width: 2.8cqw; height: 2.8cqw; animation-delay: 0.3s; }
+.epic__stars i:nth-child(5) { left: 18%; bottom: 0; width: 1.6cqw; height: 1.6cqw; animation-delay: 1.2s; }
+.epic__stars i:nth-child(6) { right: 20%; bottom: 4%; animation-delay: 0.7s; }
+.epic__stars i:nth-child(7) { left: 45%; top: -4%; width: 1.8cqw; height: 1.8cqw; animation-delay: 1s; }
+.epic__stars i:nth-child(8) { right: 40%; bottom: -6%; animation-delay: 0.2s; }
+
+@keyframes epic-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0); }
+  50% { opacity: 1; transform: scale(1) rotate(90deg); }
+}
+
+/* Reta final: heartbeat red edges, hazard stripes, a shaking card and pounding digits. */
+.epic__vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 14cqw 4cqw color-mix(in srgb, #ff2d3d 75%, transparent);
+  opacity: 0.4;
+}
+
+.celebration.is-in .epic__vignette { animation: epic-heartbeat 1s ease-in-out infinite; }
+
+@keyframes epic-heartbeat {
+  0%, 60%, 100% { opacity: 0.25; }
+  15% { opacity: 0.9; }
+  30% { opacity: 0.35; }
+  45% { opacity: 0.8; }
+}
+
+.epic__hazard {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: clamp(8px, 0.8cqw, 16px);
+  border-radius: 999px;
+  background: repeating-linear-gradient(-45deg, #ffb347 0 1cqw, #1b0f2e 1cqw 2cqw);
+}
+
+.epic__hazard--top { top: calc(-1 * clamp(4px, 0.4cqw, 8px)); }
+.epic__hazard--bottom { bottom: calc(-1 * clamp(4px, 0.4cqw, 8px)); }
+
+.fx-on .celebration.is-in .epic__hazard { animation: epic-stripes 700ms linear infinite; }
+
+@keyframes epic-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 2.83cqw 0; }
+}
+
+.celebration--warning .epic__title {
+  font-size: clamp(44px, 7cqw, 150px);
   font-variant-numeric: tabular-nums;
 }
 
-.celebration.is-in {
-  opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+.fx-on .celebration--warning.is-in .epic__card {
+  animation: epic-slam 950ms cubic-bezier(0.18, 1.35, 0.32, 1) both, epic-shake 2s ease-in-out 1s infinite;
 }
 
-.celebration.is-out {
+.fx-on .celebration--warning.is-in .epic__title { animation: epic-pound 1s ease-in-out 1.2s infinite; }
+
+@keyframes epic-shake {
+  0%, 30%, 100% { transform: translateX(0) rotate(0); }
+  5% { transform: translateX(-1.2%) rotate(-1deg); }
+  10% { transform: translateX(1.2%) rotate(1deg); }
+  15% { transform: translateX(-0.8%) rotate(-0.5deg); }
+  20% { transform: translateX(0.8%) rotate(0.5deg); }
+  25% { transform: translateX(-0.3%); }
+}
+
+@keyframes epic-pound {
+  0%, 60%, 100% { transform: scale(1); }
+  15% { transform: scale(1.1); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.07); }
+}
+
+.celebration--warning .epic__rings i { border-color: #ff2d3d; }
+
+.celebration--warning.is-in .epic__rings i {
+  animation-duration: 1s;
+  animation-iteration-count: infinite;
+}
+
+.celebration--warning .epic__beams i {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--coral) 60%, transparent), transparent);
+}
+
+.celebration--warning.is-in .epic__beams i {
+  animation-duration: 1.6s;
+  animation-direction: alternate;
+  animation-iteration-count: infinite;
+}
+
+/* Subathon finalizado: party. Disco light, rising emojis, rainbow border, dancing letters. */
+.epic__disco {
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--coral) 45%, transparent),
+    color-mix(in srgb, #ffd166 40%, transparent),
+    color-mix(in srgb, var(--cyan) 45%, transparent),
+    color-mix(in srgb, var(--purple) 50%, transparent),
+    color-mix(in srgb, var(--coral) 45%, transparent)
+  );
   opacity: 0;
-  transform: translate(-50%, -1cqw) scale(0.96);
-  transition-duration: 220ms, 240ms;
+  -webkit-mask-image: radial-gradient(circle, transparent 18%, #000 70%);
+  mask-image: radial-gradient(circle, transparent 18%, #000 70%);
 }
 
-.celebration__eyebrow {
-  font-size: clamp(11px, 0.95cqw, 19px);
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #f6dcff;
+.celebration.is-in .epic__disco {
+  animation: epic-disco-in 800ms ease-out both, epic-spin 9s linear infinite;
 }
 
-.celebration__title {
-  font-family: var(--font-display);
-  font-size: clamp(24px, 2.6cqw, 52px);
+@keyframes epic-disco-in {
+  from { opacity: 0; }
+  to { opacity: 0.4; }
+}
+
+.epic__party span {
+  position: absolute;
+  bottom: -12%;
+  left: var(--x);
+  font-size: var(--size);
   line-height: 1;
+  opacity: 0;
 }
 
-.celebration__next {
-  font-size: clamp(12px, 1cqw, 20px);
-  font-weight: 800;
-  color: #f1e4ff;
+.celebration.is-in .epic__party span { animation: epic-float-up var(--dur) linear var(--delay) infinite; }
+
+@keyframes epic-float-up {
+  0% { opacity: 0; transform: translateY(0) rotate(0); }
+  8%, 85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-120vh) rotate(var(--spin)); }
 }
 
+.celebration--finished .epic__card {
+  border: 0.35cqw solid transparent;
+  background:
+    linear-gradient(#1f1033, #1f1033) padding-box,
+    linear-gradient(90deg, var(--coral), #ffd166, var(--cyan), var(--purple), var(--coral)) border-box;
+  background-size: 100% 100%, 300% 100%;
+}
+
+.fx-on .celebration--finished.is-in .epic__card {
+  animation:
+    epic-slam 950ms cubic-bezier(0.18, 1.35, 0.32, 1) both,
+    epic-rainbow 2.4s linear infinite,
+    epic-tilt 1s ease-in-out 1.1s infinite alternate;
+}
+
+@keyframes epic-rainbow {
+  from { background-position: 0 0, 0% 0; }
+  to { background-position: 0 0, 300% 0; }
+}
+
+@keyframes epic-tilt {
+  from { transform: rotate(-2.5deg) scale(1); }
+  to { transform: rotate(2.5deg) scale(1.04); }
+}
+
+.celebration--finished .epic__title { font-size: clamp(40px, 6.4cqw, 132px); }
+
+.epic__char--c0 { color: var(--coral); }
+.epic__char--c1 { color: #ffd166; }
+.epic__char--c2 { color: var(--cyan); }
+.epic__char--c3 { color: #d9a8ff; }
+
+.fx-on .celebration--finished.is-in .epic__char {
+  animation: epic-char 650ms cubic-bezier(0.2, 1.6, 0.35, 1) both, epic-bounce 900ms ease-in-out infinite;
+  animation-delay: calc(var(--i) * var(--step, 32ms) + 300ms), calc(var(--i) * 60ms + 1.4s);
+}
+
+@keyframes epic-bounce {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  30% { transform: translateY(-0.22em) rotate(-6deg); }
+  60% { transform: translateY(0.04em) rotate(4deg); }
+}
+
+/* Goal cards flare in the other overlays while their banner plays. */
 .glass-card.is-celebrating {
   border-color: color-mix(in srgb, var(--accent) 90%, #ffffff);
 }

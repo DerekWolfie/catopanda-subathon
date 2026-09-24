@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+## 0.4.7 (2026-09-23)
+
+- Give every goal a status after it is reached: Pendente, Em andamento or Concluída.
+  Only one goal is in progress at a time; starting another returns the previous one to
+  Pendente. Statuses live in the persisted state, so an upgrade keeps the configuration,
+  totals, timer, history and duplicate-event keys untouched and starts every goal as
+  Pendente. A downgrade to 0.4.6 keeps totals and time but drops the statuses.
+- Add the **definir situação da meta** block. The goal comes from a list of the
+  configured goals (no ID to type), with shortcuts for the goal in progress, the next
+  reached goal and all reached goals. A failed write keeps the previous statuses.
+- Add the **situação da meta alterada** trigger, the `goal-status` overlay event, and
+  `reached`, `execution`, `stage`, `stageLabel`, `activeGoal` and `goalCounts` in the
+  state. `completed` and the goal-reached trigger keep their meaning.
+- Rename the **meta concluída** trigger label to **meta alcançada**; the node type is
+  unchanged, so existing flows keep working.
+- Add the **Meta em andamento** overlay (`/overlay/goals-active`), which hides itself when
+  no goal is in progress, and the **Lista de metas** overlay (`/overlay/goals-list`), a
+  vertical list that scrolls on its own with the goal in progress first and completed
+  goals last.
+- Highlight the goal in progress in the goals footer and totem. Reached goals show
+  "Alcançada"; only completed goals are struck through, which now also works on
+  scrolling titles.
+- Add the streamer dashboard at `/dashboard` to start, finish or reset goals from the
+  browser, with filters, search, a confirmed bulk "finish all reached" and copyable
+  overlay URLs. Its write routes accept JSON only from the plugin's own local origin
+  and refuse other sites and rebound host names.
+- Control the timer from the dashboard: pause or resume, quick steps from -10 min to
+  +1 h, add, subtract or set an amount in minutes, hours or seconds, and restore the
+  initial value. Set and restore take a second click. `POST /api/timer` refuses any
+  amount that is not a whole number of seconds instead of treating it as zero, and
+  the adjustments stay out of the "added in the live" total. The state now reports
+  `timer.initialSeconds` and `timer.initialFormatted`.
+- Test every alert from the dashboard (added time for Donate, Sub and Bits, goal
+  reached, in progress and done, final stretch and finished). `POST /api/test-alert`
+  sends the overlay event only, marked `test: true`: nothing is written, no total or
+  timer moves and no flow trigger fires.
+- Rebuild the Alertas banners as full-screen moments, centered by default and movable
+  with `?banner=top|bottom`. Goal in progress: impact entrance, letter cascade,
+  repeating shockwaves and light beams, pulsing glow. Goal done: golden rays, a check
+  that draws itself, stars and a confetti burst, cannons and rain. Final stretch:
+  heartbeat red edges, moving hazard stripes, shaking card and pounding digits.
+  Subathon finished: disco light, rising emojis, dancing rainbow letters, confetti
+  storm and fireworks for at least 15 seconds. Banners queue one at a time, same-kind
+  goals queued together merge into one, and the final stretch and the finish
+  interrupt. With effects off or reduced motion the same card shows still.
+- Add the "situação das metas pelo chat" template (`!metainicia`, `!metaconcluida`,
+  broadcaster and moderators only) and log status changes in the console template.
+- Add the **Somente situação das metas** scope to **zerar estado**.
+
 ## 0.4.6 (2026-09-22)
 
 - Extend the LivePix template with an accounting receipt after Register Donate.

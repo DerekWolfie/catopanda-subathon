@@ -67,7 +67,7 @@
           </header>
           <div class="totem__list" data-goals-totem-list></div>
           <footer class="totem__footer">
-            <span data-completed-summary>0 concluídas</span>
+            <span data-completed-summary>0 alcançadas</span>
             <strong class="marquee" data-totem-next>Próxima meta</strong>
           </footer>
         </div>
@@ -109,14 +109,40 @@
         </div>
       </section>
 
+      <section class="view view--goals-active" data-view="goals-active">
+        <div class="active-goal glass-card is-empty" data-active-goal>
+          <div class="active-goal__mascot">
+            <i class="mascot-halo" aria-hidden="true"></i>
+            <img src="/assets/catopanda-avatar.png" alt="CatOPanda" />
+          </div>
+          <div class="active-goal__copy">
+            <p class="active-goal__badge"><i aria-hidden="true"></i><span>Meta em andamento</span></p>
+            <strong class="active-goal__title marquee" data-active-goal-title></strong>
+            <p class="active-goal__meta"><span data-active-goal-kind></span><b data-active-goal-amount></b></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view--goals-list" data-view="goals-list">
+        <div class="goals-list glass-card">
+          <header class="goals-list__header">
+            <img src="/assets/catopanda-logo.png" alt="Cat O Panda" />
+            <div>
+              <span>Subathon CatOPanda</span>
+              <strong>Metas da comunidade</strong>
+              <small data-goals-list-summary>0 metas</small>
+            </div>
+          </header>
+          <div class="goals-list__viewport" data-goals-list-viewport tabindex="0" aria-label="Lista de metas">
+            <ol class="goals-list__track" data-goals-list></ol>
+          </div>
+        </div>
+      </section>
+
       <section class="view view--alerts" data-view="alerts" aria-label="Alertas do subathon"></section>
 
       <div class="toast-stack" data-toast-stack aria-live="polite"></div>
-      <div class="celebration" data-celebration hidden>
-        <span class="celebration__eyebrow" data-celebration-eyebrow>Meta concluída</span>
-        <strong class="celebration__title" data-celebration-title></strong>
-        <span class="celebration__next" data-celebration-next></span>
-      </div>
+      <div class="celebration" data-celebration hidden></div>
       <canvas class="confetti" data-confetti aria-hidden="true"></canvas>
     </main>
     <noscript>Ative o JavaScript nesta Browser Source.</noscript>

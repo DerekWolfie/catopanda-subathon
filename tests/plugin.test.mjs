@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { connect } from "node:net";
+import { request } from "node:http";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import plugin from "../plugin/index.mjs";
@@ -12,6 +13,7 @@ function context(overrides = {}, sharedSecrets = new Map()) {
   const actions = new Map();
   const triggers = [];
   const statuses = [];
+  const resources = [];
   const config = {
     enabled: true,
     port: 0,
@@ -31,6 +33,7 @@ function context(overrides = {}, sharedSecrets = new Map()) {
     actions,
     triggers,
     statuses,
+    resources,
     sharedSecrets,
     ctx: {
       signal: controller.signal,
@@ -43,7 +46,7 @@ function context(overrides = {}, sharedSecrets = new Map()) {
       registerAction: (name, handler) => actions.set(name, handler),
       emitTrigger: (name, payload) => triggers.push({ name, payload }),
       setStatus: (status) => statuses.push(status),
-      setResource: () => {},
+      setResource: (key, items) => resources.push({ key, items }),
       onFlowsChanged: () => {},
       log: { info: () => {}, warn: () => {}, error: () => {} },
     },
@@ -164,7 +167,10 @@ test("state, contributions, goals, routes and persistence", async () => {
     assert.equal(initial.timer.running, false);
     assert.match(initial.urls.brbStage, /^http:\/\/127\.0\.0\.1:\d+\/overlay\/brb-stage$/);
     assert.match(initial.urls.alerts, /\/overlay\/alerts$/);
-    assert.equal(Object.keys(initial.urls).length, 7);
+    assert.equal(Object.keys(initial.urls).length, 10);
+    assert.match(initial.urls.dashboard, /\/dashboard$/);
+    assert.match(initial.urls.goalsActive, /\/overlay\/goals-active$/);
+    assert.match(initial.urls.goalsList, /\/overlay\/goals-list$/);
     assert.equal(initial.display.effects.alertsPosition, "top-right");
     assert.deepEqual(initial.display.effects, {
       enabled: true,
@@ -944,4 +950,398 @@ test("invalid manual corrections reject before mutation and leave the queue usab
     }
     assert.deepEqual(await adjust({ contributionType: "subs", operation: "add", value: 1 }), { type: "subs", total: 3, timerChanged: false });
   } finally { await plugin.deactivate(); }
+});
+
+test("state saved by 0.4.6 keeps totals, timer, history and IDs, and every goal starts pending", async () => {
+  const support = { type: "donate", value: 5000, valueLabel: "R$ 50", actorName: "Fã", secondsAdded: 3000,
+    addedLabel: "00:50:00", source: "livepix", tier: "", receivedAt: "2026-09-22T20:00:00.000Z" };
+  const legacy = {
+    version: 1,
+    revision: 812,
+    timer: { remainingSeconds: 181234, running: false, anchorAt: 1, finishedEmitted: false, finishedAt: "", warningsFired: [] },
+    totals: { donateCents: 15000, subs: 12, bits: 3400, addedSeconds: 40210 },
+    ledger: [],
+    idLedger: { version: 1, generation: "a1b2c3d4e5f6a1b2c3d4e5f6", pages: 0, tail: ["donate:livepix:1", "subs:twitch:9"] },
+    lastSupport: support,
+    history: [support],
+  };
+  const secrets = new Map([["catopanda-subathon-state-v1", JSON.stringify(legacy)]]);
+  const first = context({}, secrets);
+  await plugin.activate(first.ctx);
+  try {
+    const state = await first.actions.get("get-state")({});
+    assert.equal(state.revision, 812);
+    assert.deepEqual(
+      { donate: state.totals.donate, subs: state.totals.subs, bits: state.totals.bits, addedSeconds: state.totals.addedSeconds },
+      { donate: 15000, subs: 12, bits: 3400, addedSeconds: 40210 },
+    );
+    assert.equal(state.timer.remainingSeconds, 181234);
+    assert.deepEqual(state.history, [support]);
+    assert.deepEqual(state.lastSupport, support);
+    assert.deepEqual(state.goals.map((goal) => goal.execution), Array(6).fill("pending"));
+    assert.deepEqual(state.goals.map((goal) => goal.stage), ["reached", "reached", "open", "open", "open", "open"]);
+    assert.equal(state.activeGoal, null);
+    assert.deepEqual(state.goalCounts, { total: 6, reached: 2, pending: 2, inProgress: 0, done: 0 });
+    assert.equal((await first.actions.get("record-donate")({ amountCents: 100, eventKey: "livepix:1" })).duplicate, true);
+    assert.equal((await first.actions.get("record-sub")({ count: 1, eventKey: "twitch:9" })).duplicate, true);
+    await first.actions.get("set-goal-status")({ goalId: "donate-100", status: "in-progress" });
+  } finally {
+    await plugin.deactivate();
+  }
+
+  const stored = JSON.parse(secrets.get("catopanda-subathon-state-v1"));
+  assert.deepEqual(stored.totals, legacy.totals);
+  assert.deepEqual(stored.history, legacy.history);
+  assert.deepEqual(stored.lastSupport, legacy.lastSupport);
+  assert.deepEqual(stored.idLedger, legacy.idLedger);
+  assert.equal(stored.timer.remainingSeconds, legacy.timer.remainingSeconds);
+  assert.deepEqual(stored.goalStatus, { "donate-100": "in-progress" });
+
+  const second = context({}, secrets);
+  await plugin.activate(second.ctx);
+  try {
+    const restored = await second.actions.get("get-state")({});
+    assert.equal(restored.activeGoal.id, "donate-100");
+    assert.equal(restored.totals.donate, 15000);
+    assert.equal(restored.totals.addedSeconds, 40210);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("only one goal is in progress, done survives a restart, and shortcuts pick the right goal", async () => {
+  const secrets = new Map();
+  const first = context({}, secrets);
+  await plugin.activate(first.ctx);
+  const set = (goalId, status) => first.actions.get("set-goal-status")({ goalId, status });
+  const statusEvents = () => first.triggers.filter((entry) => entry.name === "goal-status-changed").map((entry) => entry.payload);
+  try {
+    await first.actions.get("set-total")({ contributionType: "donate", value: 15000 });
+    await assert.rejects(set("@active", "done"), /nenhuma meta está em andamento/);
+
+    const started = await set("@next", "in-progress");
+    assert.equal(started.goalId, "donate-100");
+    assert.equal(started.activeGoalId, "donate-100");
+    assert.equal(started.changed, true);
+
+    // Starting another goal returns the first one to pending: never two at once.
+    const switched = await set("donate-150", "Em andamento");
+    assert.equal(switched.activeGoalId, "donate-150");
+    let state = await first.actions.get("get-state")({});
+    assert.deepEqual(state.goals.filter((goal) => goal.active).map((goal) => goal.id), ["donate-150"]);
+    assert.equal(state.goals[0].execution, "pending");
+    assert.equal(state.goals[0].stage, "reached");
+    assert.deepEqual(statusEvents().map((event) => [event.goalId, event.previousStatus, event.status]), [
+      ["donate-100", "pending", "in-progress"],
+      ["donate-100", "in-progress", "pending"],
+      ["donate-150", "pending", "in-progress"],
+    ]);
+    assert.equal(statusEvents()[2].statusLabel, "Em andamento");
+    assert.equal(statusEvents()[2].activeTitle, "Cantar uma música");
+
+    const finished = await set("@active", "done");
+    assert.equal(finished.goalId, "donate-150");
+    assert.equal(finished.activeGoalId, "");
+    const repeated = await set("donate-150", "concluída");
+    assert.equal(repeated.changed, false);
+    assert.equal(statusEvents().length, 4);
+
+    // A title written in a formula works when it is unique; the case does not matter.
+    assert.equal((await set("chat escolhe o outfit", "done")).goalId, "donate-100");
+    // A goal can be started before its target is reached.
+    const early = await set("subs-50", "in-progress");
+    assert.equal(early.activeGoalId, "subs-50");
+    state = await first.actions.get("get-state")({});
+    const subs = state.goals.find((goal) => goal.id === "subs-50");
+    assert.equal(subs.reached, false);
+    assert.equal(subs.stage, "in-progress");
+    assert.equal(subs.stageLabel, "Em andamento");
+    assert.equal(subs.completed, false);
+    assert.equal(state.goals[0].completed, true, "completed keeps meaning target reached");
+
+    await assert.rejects(set("@reached", "in-progress"), /somente uma meta/);
+    await assert.rejects(set("nao-existe", "done"), /meta não encontrada/);
+    await assert.rejects(set("donate-100", "talvez"), /situação inválida/);
+    await assert.rejects(set("", "done"), /escolha a meta/);
+
+    const reset = await set("@reached", "pending");
+    assert.deepEqual(reset.goalIds, ["donate-100", "donate-150"]);
+    await set("@reached", "done");
+    state = await first.actions.get("get-state")({});
+    assert.deepEqual(state.goalCounts, { total: 6, reached: 2, pending: 0, inProgress: 1, done: 2 });
+  } finally {
+    await plugin.deactivate();
+  }
+
+  const second = context({}, secrets);
+  await plugin.activate(second.ctx);
+  try {
+    let state = await second.actions.get("get-state")({});
+    assert.deepEqual(state.goals.map((goal) => goal.stage), ["done", "done", "open", "open", "in-progress", "open"]);
+    assert.equal(state.activeGoal.id, "subs-50");
+    await second.actions.get("reset-state")({ scope: "goal-status" });
+    state = await second.actions.get("get-state")({});
+    assert.deepEqual(state.goals.map((goal) => goal.execution), Array(6).fill("pending"));
+    assert.equal(state.totals.donate, 15000, "clearing statuses never touches totals");
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("a failed status write keeps the previous statuses and announces nothing", async () => {
+  const fixture = context();
+  const save = fixture.ctx.secrets.set;
+  try {
+    await plugin.activate(fixture.ctx);
+    await fixture.actions.get("set-total")({ contributionType: "donate", value: 10000 });
+    fixture.ctx.secrets.set = async () => { throw new Error("disk full"); };
+    await assert.rejects(fixture.actions.get("set-goal-status")({ goalId: "donate-100", status: "in-progress" }), /disk full/);
+    fixture.ctx.secrets.set = save;
+    const state = await fixture.actions.get("get-state")({});
+    assert.equal(state.activeGoal, null);
+    assert.equal(fixture.triggers.filter((entry) => entry.name === "goal-status-changed").length, 0);
+    assert.equal((await fixture.actions.get("set-goal-status")({ goalId: "donate-100", status: "in-progress" })).changed, true);
+  } finally { fixture.ctx.secrets.set = save; await plugin.deactivate(); }
+});
+
+test("the goal picker lists shortcuts and every goal, and republishes only when a label changes", async () => {
+  const fixture = context();
+  await plugin.activate(fixture.ctx);
+  try {
+    const published = () => fixture.resources.filter((entry) => entry.key === "goals");
+    const initial = published().at(-1).items;
+    assert.deepEqual(initial.slice(0, 3).map((item) => item.value), ["@active", "@next", "@reached"]);
+    assert.deepEqual(initial.slice(3).map((item) => item.value), manifest.configSchema.fields
+      .find((field) => field.key === "goals").default.map((goal) => goal.id));
+    assert.match(initial[3].label, /^01 · Chat escolhe o outfit · R\$\s100 · A caminho$/);
+    const count = published().length;
+    await wait(1100);
+    assert.equal(published().length, count, "the timer tick does not republish an unchanged list");
+    await fixture.actions.get("set-total")({ contributionType: "donate", value: 10000 });
+    assert.match(published().at(-1).items[3].label, /· Alcançada$/);
+    await fixture.actions.get("set-goal-status")({ goalId: "donate-100", status: "in-progress" });
+    assert.match(published().at(-1).items[3].label, /· Em andamento$/);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("overlays receive each goal status change once through the poll", async () => {
+  const fixture = context();
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    const base = new URL(state.urls.goalsList).origin;
+    const start = await (await fetch(base + "/api/poll")).json();
+    await fixture.actions.get("set-total")({ contributionType: "subs", value: 50 });
+    await fixture.actions.get("set-goal-status")({ goalId: "subs-50", status: "in-progress" });
+    const next = await (await fetch(base + "/api/poll?since=" + String(start.seq))).json();
+    const statusEvents = next.events.filter((event) => event.name === "goal-status");
+    assert.equal(statusEvents.length, 1);
+    assert.equal(statusEvents[0].payload.title, "Karaokê com o chat");
+    assert.equal(next.state.activeGoal.id, "subs-50");
+    const after = await (await fetch(base + "/api/poll?since=" + String(next.seq))).json();
+    assert.equal(after.events.length, 0);
+    for (const path of ["/overlay/goals-active", "/overlay/goals-list"]) {
+      const page = await (await fetch(base + path)).text();
+      assert.match(page, /data-view="goals-active"/);
+      assert.match(page, /data-goals-list/);
+    }
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+function rawRequest(port, { method = "POST", path = "/api/goal-status", headers = {}, body = "" }) {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, method, path, headers: { "content-length": Buffer.byteLength(body), ...headers } }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+test("the dashboard changes a goal status through the same rules as the flow block", async () => {
+  const fixture = context();
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    const origin = new URL(state.urls.dashboard).origin;
+    const page = await fetch(state.urls.dashboard);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Painel do subathon/);
+    for (const path of ["/dashboard.css", "/dashboard.js"]) assert.equal((await fetch(origin + path)).status, 200, path);
+
+    await fixture.actions.get("set-total")({ contributionType: "donate", value: 10000 });
+    const post = (body) => fetch(origin + "/api/goal-status", {
+      method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body),
+    });
+    const started = await post({ goalId: "@next", status: "in-progress" });
+    assert.equal(started.status, 200);
+    const result = await started.json();
+    assert.equal(result.ok, true);
+    assert.equal(result.activeGoalId, "donate-100");
+    assert.equal(fixture.triggers.filter((entry) => entry.name === "goal-status-changed").length, 1);
+    assert.equal((await fixture.actions.get("get-state")({})).activeGoal.id, "donate-100");
+
+    const unknown = await post({ goalId: "nao-existe", status: "done" });
+    assert.equal(unknown.status, 400);
+    assert.match((await unknown.json()).error, /meta não encontrada/);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("pages on other sites cannot change a goal through the local server", async () => {
+  const fixture = context();
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    const port = Number(new URL(state.urls.dashboard).port);
+    const body = JSON.stringify({ goalId: "donate-100", status: "done" });
+    const json = { "content-type": "application/json" };
+    const attempts = [
+      // A cross-site HTML form can only send these content types.
+      { headers: { "content-type": "text/plain" }, body },
+      { headers: { "content-type": "application/x-www-form-urlencoded" }, body: "goalId=donate-100&status=done" },
+      { headers: { ...json, origin: "https://evil.example" }, body },
+      { headers: { ...json, "sec-fetch-site": "cross-site" }, body },
+      // DNS rebinding: a hostile name that resolves to 127.0.0.1.
+      { headers: { ...json, host: "evil.example:" + String(port) }, body },
+    ];
+    for (const attempt of attempts) {
+      const response = await rawRequest(port, attempt);
+      assert.equal(response.status, 403, JSON.stringify(attempt.headers));
+    }
+    const preflight = await rawRequest(port, { method: "OPTIONS", headers: { origin: "https://evil.example" } });
+    assert.equal(preflight.status, 405);
+    assert.equal(preflight.headers["access-control-allow-origin"], undefined);
+    const oversized = await rawRequest(port, { headers: json, body: JSON.stringify({ goalId: "x".repeat(5000), status: "done" }) });
+    assert.equal(oversized.status, 400);
+    const after = await fixture.actions.get("get-state")({});
+    assert.deepEqual(after.goals.map((goal) => goal.execution), Array(6).fill("pending"));
+    assert.equal(fixture.triggers.filter((entry) => entry.name === "goal-status-changed").length, 0);
+    // Same machine, no browser: curl-style clients without Origin still work with JSON.
+    const local = await rawRequest(port, { headers: json, body });
+    assert.equal(local.status, 200);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+async function dashboardPost(origin, path, body) {
+  const response = await fetch(origin + path, {
+    method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+test("the dashboard runs the timer like the timer block and never counts it as supporter time", async () => {
+  const fixture = context({ initialTimerSeconds: 7200 });
+  await plugin.activate(fixture.ctx);
+  try {
+    const state = await fixture.actions.get("get-state")({});
+    assert.equal(state.timer.initialSeconds, 7200);
+    assert.equal(state.timer.initialFormatted, "02:00:00");
+    const origin = new URL(state.urls.dashboard).origin;
+    const timer = (body) => dashboardPost(origin, "/api/timer", body);
+
+    let result = await timer({ operation: "resume" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.running, true);
+    result = await timer({ operation: "pause" });
+    assert.equal(result.body.running, false);
+    assert.equal((await timer({ operation: "add", seconds: 600 })).body.remainingSeconds, 7800);
+    assert.equal((await timer({ operation: "subtract", seconds: 300 })).body.remainingSeconds, 7500);
+    assert.equal((await timer({ operation: "set", seconds: 3600 })).body.formatted, "01:00:00");
+    const reset = await timer({ operation: "reset" });
+    assert.equal(reset.body.remainingSeconds, 7200);
+    assert.equal(reset.body.running, false);
+
+    // Anything unreadable is refused before the countdown moves.
+    for (const body of [
+      { operation: "set", seconds: "abc" },
+      { operation: "set" },
+      { operation: "set", seconds: -5 },
+      { operation: "set", seconds: 1.5 },
+      { operation: "add", seconds: 0 },
+      { operation: "add", seconds: 31536001 },
+      { operation: "toggle" },
+      { operation: "explode", seconds: 10 },
+    ]) {
+      const refused = await timer(body);
+      assert.equal(refused.status, 400, JSON.stringify(body));
+    }
+    const after = await fixture.actions.get("get-state")({});
+    assert.equal(after.timer.remainingSeconds, 7200);
+    assert.equal(after.totals.addedSeconds, 0, "operator adjustments are not supporter time");
+
+    const port = Number(new URL(origin).port);
+    for (const path of ["/api/timer", "/api/test-alert"]) {
+      const response = await rawRequest(port, {
+        path,
+        headers: { "content-type": "application/json", origin: "https://evil.example" },
+        body: JSON.stringify({ operation: "set", seconds: 0, kind: "timer-finished" }),
+      });
+      assert.equal(response.status, 403, path);
+    }
+    assert.equal((await fixture.actions.get("get-state")({})).timer.remainingSeconds, 7200);
+  } finally {
+    await plugin.deactivate();
+  }
+});
+
+test("test alerts reach the overlays once, marked as tests, and change nothing else", async () => {
+  const secrets = new Map();
+  const fixture = context({}, secrets);
+  await plugin.activate(fixture.ctx);
+  try {
+    await fixture.actions.get("set-total")({ contributionType: "donate", value: 10000 });
+    await fixture.actions.get("set-goal-status")({ goalId: "donate-100", status: "in-progress" });
+    const before = await fixture.actions.get("get-state")({});
+    const storedBefore = secrets.get("catopanda-subathon-state-v1");
+    const triggersBefore = fixture.triggers.length;
+    const origin = new URL(before.urls.dashboard).origin;
+    const start = await (await fetch(origin + "/api/poll")).json();
+
+    const expected = {
+      "contribution-donate": "contribution",
+      "contribution-subs": "contribution",
+      "contribution-bits": "contribution",
+      "goal-completed": "goal-completed",
+      "goal-in-progress": "goal-status",
+      "goal-done": "goal-status",
+      "timer-warning": "timer-warning",
+      "timer-finished": "timer-finished",
+    };
+    for (const [kind, event] of Object.entries(expected)) {
+      const sent = await dashboardPost(origin, "/api/test-alert", { kind });
+      assert.equal(sent.status, 200, kind);
+      assert.equal(sent.body.event, event);
+    }
+    assert.equal((await dashboardPost(origin, "/api/test-alert", { kind: "nope" })).status, 400);
+
+    const polled = await (await fetch(origin + "/api/poll?since=" + String(start.seq))).json();
+    assert.deepEqual(polled.events.map((entry) => entry.name), Object.values(expected));
+    assert.ok(polled.events.every((entry) => entry.payload.test === true));
+    const donate = polled.events[0].payload;
+    assert.equal(donate.actorName, "Teste do painel");
+    assert.equal(donate.secondsAdded, 600);
+    assert.equal(polled.events[3].payload.title, "Chat escolhe o outfit");
+    assert.equal(polled.events[5].payload.status, "done");
+
+    const after = await fixture.actions.get("get-state")({});
+    assert.equal(after.revision, before.revision);
+    assert.deepEqual(after.totals, before.totals);
+    assert.equal(after.timer.remainingSeconds, before.timer.remainingSeconds);
+    assert.deepEqual(after.goals.map((goal) => goal.execution), before.goals.map((goal) => goal.execution));
+    assert.deepEqual(after.history, before.history);
+    assert.equal(secrets.get("catopanda-subathon-state-v1"), storedBefore, "nothing is written");
+    assert.equal(fixture.triggers.length, triggersBefore, "no flow trigger fires");
+  } finally {
+    await plugin.deactivate();
+  }
 });

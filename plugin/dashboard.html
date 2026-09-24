@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>Painel do subathon · CatOPanda Subathon</title>
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__brand">
+        <img src="/assets/catopanda-avatar.png" alt="" width="44" height="44" />
+        <div>
+          <p class="eyebrow">CatOPanda Subathon</p>
+          <h1>Painel do subathon</h1>
+        </div>
+      </div>
+      <dl class="topbar__stats">
+        <div><dt>Cronômetro</dt><dd data-timer>--:--:--</dd></div>
+        <div><dt>Alcançadas</dt><dd data-count-reached>0</dd></div>
+        <div><dt>Concluídas</dt><dd data-count-done>0</dd></div>
+      </dl>
+      <p class="connection" data-connection role="status"><i aria-hidden="true"></i><span>Conectando…</span></p>
+    </header>
+
+    <main class="layout">
+      <p class="notice notice--warning" data-goal-errors hidden></p>
+
+      <section class="timer-panel" aria-labelledby="timer-heading">
+        <h2 id="timer-heading" class="section-title">Cronômetro</h2>
+        <div class="timer-card" data-timer-card>
+          <div class="timer-card__display">
+            <p class="timer-card__state" data-timer-state>Carregando…</p>
+            <p class="timer-card__time" data-timer-big>--:--:--</p>
+            <p class="timer-card__hint">Ajustes feitos aqui mudam o tempo restante, mas não entram no total "adicionado na live".</p>
+          </div>
+          <div class="timer-card__controls">
+            <div class="timer-card__row">
+              <button type="button" class="button button--primary button--wide" data-timer-toggle>Retomar</button>
+            </div>
+            <div class="timer-card__row quick" role="group" aria-label="Ajuste rápido">
+              <button type="button" class="button button--ghost button--small" data-quick="-600">−10 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="-300">−5 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="-60">−1 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="60">+1 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="300">+5 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="600">+10 min</button>
+              <button type="button" class="button button--ghost button--small" data-quick="3600">+1 h</button>
+            </div>
+            <form class="timer-form" data-timer-form novalidate>
+              <label class="timer-form__field">
+                <span class="visually-hidden">Quantidade</span>
+                <input type="text" inputmode="decimal" autocomplete="off" data-timer-amount placeholder="Ex.: 15 ou 1,5" aria-describedby="timer-form-error" />
+              </label>
+              <label class="timer-form__field">
+                <span class="visually-hidden">Unidade</span>
+                <select data-timer-unit>
+                  <option value="60">minutos</option>
+                  <option value="3600">horas</option>
+                  <option value="1">segundos</option>
+                </select>
+              </label>
+              <button type="submit" class="button button--ghost button--small" data-timer-op="add">Adicionar</button>
+              <button type="submit" class="button button--ghost button--small" data-timer-op="subtract">Subtrair</button>
+              <button type="submit" class="button button--ghost button--small" data-timer-op="set">Definir</button>
+              <p class="timer-form__error" id="timer-form-error" data-timer-error hidden></p>
+            </form>
+            <div class="timer-card__row">
+              <button type="button" class="button button--ghost button--small" data-timer-reset>Restaurar valor inicial</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="active" data-active aria-labelledby="active-heading">
+        <h2 id="active-heading" class="section-title">Em andamento agora</h2>
+        <div class="active__card" data-active-card>
+          <div class="active__copy">
+            <p class="active__meta" data-active-meta></p>
+            <p class="active__title" data-active-title>Nenhuma meta em andamento</p>
+            <p class="active__hint" data-active-hint>Quando uma meta alcançada for começar, coloque-a em andamento. Os overlays destacam essa meta.</p>
+          </div>
+          <div class="active__actions" data-active-actions></div>
+        </div>
+      </section>
+
+      <section class="goals" aria-labelledby="goals-heading">
+        <div class="goals__head">
+          <h2 id="goals-heading" class="section-title">Metas</h2>
+          <label class="search">
+            <span class="visually-hidden">Buscar meta</span>
+            <input type="search" data-search placeholder="Buscar pelo título" autocomplete="off" />
+          </label>
+        </div>
+        <p class="section-hint">
+          Para cadastrar, editar ou reordenar metas, use a aba Metas do plugin no OSC Flow Studio.
+          A lista abaixo acompanha a configuração salva.
+        </p>
+        <div class="filters" role="group" aria-label="Filtrar metas" data-filters></div>
+        <ol class="goal-list" data-goal-list aria-live="polite"></ol>
+        <p class="empty" data-empty hidden></p>
+        <div class="bulk">
+          <button type="button" class="button button--ghost" data-bulk-done>Concluir todas as alcançadas</button>
+        </div>
+      </section>
+
+      <section class="alert-tests" aria-labelledby="alert-tests-heading">
+        <h2 id="alert-tests-heading" class="section-title">Testar alertas</h2>
+        <p class="section-hint">
+          Os testes aparecem no OBS como um alerta de verdade: avisos, faixas e confete no overlay
+          Alertas e o destaque nos outros overlays. Não mudam cronômetro, totais nem metas e não
+          disparam flows. Um efeito desligado na aba Overlays também não aparece no teste.
+        </p>
+        <div class="alert-tests__groups">
+          <div class="alert-tests__group" role="group" aria-labelledby="alert-tests-support">
+            <h3 id="alert-tests-support">Tempo adicionado</h3>
+            <button type="button" class="button button--ghost button--small" data-test-alert="contribution-donate">Donate de R$ 10</button>
+            <button type="button" class="button button--ghost button--small" data-test-alert="contribution-subs">Sub Tier 1</button>
+            <button type="button" class="button button--ghost button--small" data-test-alert="contribution-bits">500 Bits</button>
+          </div>
+          <div class="alert-tests__group" role="group" aria-labelledby="alert-tests-goals">
+            <h3 id="alert-tests-goals">Metas</h3>
+            <button type="button" class="button button--ghost button--small" data-test-alert="goal-completed">Meta alcançada</button>
+            <button type="button" class="button button--ghost button--small" data-test-alert="goal-in-progress">Meta em andamento</button>
+            <button type="button" class="button button--ghost button--small" data-test-alert="goal-done">Meta concluída</button>
+          </div>
+          <div class="alert-tests__group" role="group" aria-labelledby="alert-tests-timer">
+            <h3 id="alert-tests-timer">Cronômetro</h3>
+            <button type="button" class="button button--ghost button--small" data-test-alert="timer-warning">Reta final</button>
+            <button type="button" class="button button--ghost button--small" data-test-alert="timer-finished">Subathon encerrado</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="links" aria-labelledby="links-heading">
+        <h2 id="links-heading" class="section-title">Endereços para o OBS</h2>
+        <ul class="link-list" data-links></ul>
+      </section>
+    </main>
+
+    <div class="toast-region" data-toasts aria-live="assertive"></div>
+    <noscript>Ative o JavaScript para usar o painel.</noscript>
+    <script src="/dashboard.js" defer></script>
+  </body>
+</html>

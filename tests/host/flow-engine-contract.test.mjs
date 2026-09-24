@@ -9,7 +9,7 @@ import plugin from "../../plugin/index.mjs";
 const hostRoot = resolve(process.env.OSC_FLOW_STUDIO_ROOT || fileURLToPath(new URL("../../../osc-flow-studio/", import.meta.url)));
 const hostImport = (path) => import(pathToFileURL(resolve(hostRoot, path)).href);
 const { FlowEngine } = await hostImport("packages/flow-engine/dist/index.js");
-const { FlowSchema, buildStreamTriggerOutput } = await hostImport("packages/core/dist/index.js");
+const { FlowSchema, buildPluginTriggerOutput, buildStreamTriggerOutput } = await hostImport("packages/core/dist/index.js");
 const { TwitchEventSubSession } = await hostImport("packages/twitch-client/dist/index.js");
 const { assertNodeOutputContract, assertNodeOutputEnvelope } = await hostImport("packages/flow-engine/tests/helpers/node-output-contract.ts");
 const manifest = JSON.parse(readFileSync(new URL("../../plugin/manifest.json", import.meta.url), "utf8"));
@@ -330,5 +330,80 @@ test("legacy gifted resub flags stop their accounting branch", async () => {
       assert.equal(result.nodeOutputStore["exclude-gift-resub"].data.pass, false);
     }
     assert.equal((await f.state()).totals.subs, 0);
+  } finally { await f.close(); }
+});
+
+function goalStatusFlow(goalId, status) {
+  return { id: "goal-status", name: "Goal status contract", nodes: [
+    { id: "trigger", type: "trigger.x.contract-probe.manual" },
+    { id: "status", type: prefix + "set-goal-status", goalId, status: { mode: "fixed", value: status } },
+  ], edges: [{ id: "set-status", source: "trigger", target: "status" }] };
+}
+
+test("goal status block keeps its engine output contract for a picked goal and a shortcut", async () => {
+  const f = await fixture();
+  try {
+    await f.actions.get("set-total")({ contributionType: "donate", value: 15000 });
+    const picked = await execute(f, goalStatusFlow("donate-150", "in-progress"), "trigger", event("manual", 40), "status");
+    assert.deepEqual(picked.result.errors, []);
+    assert.equal(picked.result.nodeOutputStore.status.data.activeGoalId, "donate-150");
+    const shortcut = await execute(f, goalStatusFlow("@active", "done"), "trigger", event("manual", 41), "status");
+    assert.deepEqual(shortcut.result.errors, []);
+    assert.deepEqual(shortcut.result.nodeOutputStore.status.data.goalIds, ["donate-150"]);
+    assert.equal(shortcut.result.nodeOutputStore.status.data.activeGoalId, "");
+    const missing = await execute(f, goalStatusFlow("@active", "done"), "trigger", event("manual", 42));
+    assert.equal(missing.result.nodeOutputStore.status.status, "error");
+    const state = await f.state();
+    assert.equal(state.goals.find((goal) => goal.id === "donate-150").execution, "done");
+    assert.equal(state.totals.donate, 15000);
+  } finally { await f.close(); }
+});
+
+test("goal status trigger output reaches $trigger, $json and $node through the engine", async () => {
+  const f = await fixture();
+  try {
+    await f.actions.get("set-total")({ contributionType: "subs", value: 50 });
+    await f.actions.get("set-goal-status")({ goalId: "subs-50", status: "in-progress" });
+    const emitted = f.triggers.filter((entry) => entry.name === "goal-status-changed");
+    assert.equal(emitted.length, 1);
+    const consoleTemplate = manifest.templates.find((entry) => entry.id === "catopanda-subathon-console").flow;
+    const nodeType = "trigger.x.catopanda-subathon.goal-status-changed";
+    const flow = FlowSchema.parse({ ...consoleTemplate, enabled: true });
+    const trigger = buildPluginTriggerOutput("catopanda-subathon", "goal-status-changed", emitted[0].payload);
+    const schema = manifest.nodeTypes.find((entry) => entry.type === nodeType).outputSchema;
+    const probe = { id: "probe", type: "action.x.contract-probe.capture",
+      ...Object.fromEntries(schema.map(({ path }) => [`field_${path}`, { mode: "expression", expression: `{{ $trigger.${path} }}` }])) };
+    flow.nodes.push(probe);
+    flow.edges.push({ id: "e-probe", source: "on-goal-status", target: "probe" });
+    const { result, captures } = await execute(f, flow, "on-goal-status", trigger);
+    assert.deepEqual(result.errors, []);
+    assertNodeOutputContract(result.nodeOutputStore["on-goal-status"], schema,
+      { nodeId: "on-goal-status", nodeType, requiredPaths: schema.map((field) => field.path) });
+    const captured = captures.get("probe");
+    assert.equal(captured["field_metadata.status"], "in-progress");
+    assert.equal(captured["field_metadata.statusLabel"], "Em andamento");
+    assert.equal(captured["field_metadata.goalId"], "subs-50");
+    assert.equal(captured["field_metadata.reached"], true);
+    assert.equal(result.nodeOutputStore["log-goal-status"].status, "success");
+  } finally { await f.close(); }
+});
+
+test("bundled chat template starts the next reached goal and finishes the one in progress", async () => {
+  const f = await fixture();
+  try {
+    const chat = manifest.templates.find((entry) => entry.id === "catopanda-subathon-goal-status-chat").flow;
+    await f.actions.get("set-total")({ contributionType: "donate", value: 20000 });
+    const command = (name) => ({ ...event("command", 50), metadata: { commandName: name } });
+    const started = await execute(f, chat, "command-start", command("metainicia"), "start-next-goal");
+    assert.deepEqual(started.result.errors, []);
+    assert.equal(started.result.nodeOutputStore["start-next-goal"].data.goalId, "donate-100");
+    const finished = await execute(f, chat, "command-done", command("metaconcluida"), "finish-active-goal");
+    assert.deepEqual(finished.result.errors, []);
+    assert.equal(finished.result.nodeOutputStore["finish-active-goal"].data.status, "done");
+    const again = await execute(f, chat, "command-start", command("metainicia"), "start-next-goal");
+    assert.equal(again.result.nodeOutputStore["start-next-goal"].data.goalId, "donate-150");
+    const state = await f.state();
+    assert.deepEqual(state.goals.slice(0, 3).map((goal) => goal.stage), ["done", "in-progress", "reached"]);
+    assert.equal(state.activeGoal.id, "donate-150");
   } finally { await f.close(); }
 });

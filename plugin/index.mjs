@@ -2,7 +2,8 @@
  * CatOPanda Subathon for OSC Flow Studio.
  *
  * One persistent countdown, three independent goal ladders (Donate, Subs,
- * Bits) and six OBS overlays served from 127.0.0.1. Contributions arrive
+ * Bits), a status for each goal (pending, in progress, done) and the OBS
+ * overlays, all served from 127.0.0.1. Contributions arrive
  * through flow actions, so any trigger (Twitch, LivePix, a chat command, a
  * webhook) can feed the subathon; the plugin never talks to a payment API.
  */
@@ -12,7 +13,7 @@ import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 import { loadIdLedger } from "./id-ledger.mjs";
 
-const PLUGIN_VERSION = "0.4.6";
+const PLUGIN_VERSION = "0.4.7";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_RECENT_EVENTS = 50;
@@ -27,10 +28,14 @@ const OVERLAY_PATHS = new Set([
   "/overlay/progress-pill",
   "/overlay/timer-giant",
   "/overlay/alerts",
+  "/overlay/goals-active",
+  "/overlay/goals-list",
 ]);
 const STATIC_FILES = new Map([
   ["/overlay.css", ["overlay.css", "text/css; charset=utf-8"]],
   ["/overlay.js", ["overlay.js", "text/javascript; charset=utf-8"]],
+  ["/dashboard.css", ["dashboard.css", "text/css; charset=utf-8"]],
+  ["/dashboard.js", ["dashboard.js", "text/javascript; charset=utf-8"]],
   ["/assets/catopanda-logo.png", ["assets/catopanda-logo.png", "image/png"]],
   ["/assets/catopanda-avatar.png", ["assets/catopanda-avatar.png", "image/png"]],
   ["/assets/catopanda-background.png", ["assets/catopanda-background.png", "image/png"]],
@@ -44,6 +49,17 @@ const DEFAULT_GOALS = [
   { id: "bits-10000", type: "bits", title: "Desafio escolhido ao vivo", target: 10000, order: 6 },
 ];
 const DEFAULT_WARNINGS = [3600, 900, 300, 60];
+/**
+ * What happened to a goal after it was reached. "pending" is never stored: a
+ * goal without an entry is pending, so state from 0.4.x reads as all pending.
+ */
+const GOAL_STATUS_LABELS = { pending: "Pendente", "in-progress": "Em andamento", done: "Concluída" };
+const GOAL_STAGE_LABELS = { open: "A caminho", reached: "Alcançada", "in-progress": "Em andamento", done: "Concluída" };
+const GOAL_SHORTCUTS = {
+  "@active": "Atalho: a meta em andamento agora",
+  "@next": "Atalho: a próxima meta alcançada e pendente",
+  "@reached": "Atalho: todas as metas alcançadas",
+};
 const ALERT_POSITIONS = ["top-right", "top-left", "top-center", "bottom-right", "bottom-left", "bottom-center"];
 
 let activeRuntime = null;
@@ -227,7 +243,24 @@ function initialState(config) {
     ledger: [],
     lastSupport: null,
     history: [],
+    goalStatus: {},
   };
+}
+
+/** Keeps only statuses that mean something and never more than one goal in progress. */
+function normalizeGoalStatus(raw) {
+  const result = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return result;
+  let activeSeen = false;
+  for (const [id, status] of Object.entries(raw)) {
+    if (!id || id.length > 80) continue;
+    if (status === "done") result[id] = "done";
+    else if (status === "in-progress" && !activeSeen) {
+      result[id] = "in-progress";
+      activeSeen = true;
+    }
+  }
+  return result;
 }
 
 function hydrateState(raw, config, log) {
@@ -261,6 +294,8 @@ function hydrateState(raw, config, log) {
     next.history = Array.isArray(parsed.history)
       ? parsed.history.filter((entry) => entry && typeof entry === "object").slice(-20)
       : [];
+    // Absent before 0.5.0: every goal starts pending, and nothing else changes.
+    next.goalStatus = normalizeGoalStatus(parsed.goalStatus);
     return next;
   } catch (error) {
     throw new Error("Cannot restore Subathon state: " + describe(error));
@@ -337,10 +372,20 @@ function calculatedGoals(runtime) {
       status = "current";
       currentAssigned = true;
     }
+    // `completed` and `status` keep their 0.4 meaning (target reached) for existing
+    // flows; `execution` is what the streamer did about it.
+    const execution = runtime.state.goalStatus[goal.id] || "pending";
+    const stage = execution !== "pending" ? execution : completed ? "reached" : "open";
     return {
       ...goal,
       current,
       completed,
+      reached: completed,
+      execution,
+      executionLabel: GOAL_STATUS_LABELS[execution],
+      stage,
+      stageLabel: GOAL_STAGE_LABELS[stage],
+      active: execution === "in-progress",
       progress,
       status,
       currentLabel: formatAmount(goal.type, current),
@@ -365,6 +410,9 @@ function overlayUrls(runtime) {
     progressPill: base + "/overlay/progress-pill",
     timerGiant: base + "/overlay/timer-giant",
     alerts: base + "/overlay/alerts",
+    goalsActive: base + "/overlay/goals-active",
+    goalsList: base + "/overlay/goals-list",
+    dashboard: base + "/dashboard",
   };
 }
 
@@ -398,6 +446,8 @@ function snapshot(runtime) {
       formatted: formatTime(remainingSeconds),
       running: runtime.state.timer.running,
       finishedAt: runtime.state.timer.finishedAt,
+      initialSeconds: runtime.config.initialTimerSeconds,
+      initialFormatted: formatTime(runtime.config.initialTimerSeconds),
       nextWarningSeconds: nextWarning ?? null,
       inFinalStretch: runtime.config.warningThresholds.length > 0
         && remainingSeconds <= runtime.config.warningThresholds[0]
@@ -414,6 +464,14 @@ function snapshot(runtime) {
     goals,
     goalErrors: runtime.goalErrors,
     completedGoals: goals.filter((goal) => goal.completed).length,
+    goalCounts: {
+      total: goals.length,
+      reached: goals.filter((goal) => goal.reached).length,
+      pending: goals.filter((goal) => goal.reached && goal.execution === "pending").length,
+      inProgress: goals.filter((goal) => goal.execution === "in-progress").length,
+      done: goals.filter((goal) => goal.execution === "done").length,
+    },
+    activeGoal: goals.find((goal) => goal.active) || null,
     currentGoal,
     nextGoal,
     score,
@@ -496,7 +554,29 @@ function broadcast(runtime, eventName, payload) {
 
 function emitState(runtime) {
   if (runtime.stopped) return;
-  broadcast(runtime, "state", snapshot(runtime));
+  const state = snapshot(runtime);
+  broadcast(runtime, "state", state);
+  publishGoalResources(runtime, state.goals);
+}
+
+/**
+ * The goal picker of "definir situação da meta". Published again only when a
+ * label changes (a goal reached, a status set), never on the one-second tick.
+ */
+function publishGoalResources(runtime, goals) {
+  if (typeof runtime.ctx.setResource !== "function") return;
+  const items = [
+    ...Object.entries(GOAL_SHORTCUTS).map(([value, label]) => ({ value, label, group: "Atalhos" })),
+    ...goals.map((goal, index) => ({
+      value: goal.id,
+      label: String(index + 1).padStart(2, "0") + " · " + goal.title + " · " + goal.targetLabel + " · " + goal.stageLabel,
+      group: "Metas",
+    })),
+  ];
+  const signature = JSON.stringify(items);
+  if (signature === runtime.goalResourceSignature) return;
+  runtime.goalResourceSignature = signature;
+  runtime.ctx.setResource("goals", items);
 }
 
 function queueMutation(runtime, callback) {
@@ -776,7 +856,7 @@ async function setTotal(runtime, input) {
 async function resetState(runtime, input) {
   return queueMutation(runtime, async () => {
     const scope = asText(input.scope, "totals");
-    if (!["totals", "timer", "ledger", "all"].includes(scope)) throw new Error("escopo inválido: " + scope);
+    if (!["totals", "timer", "ledger", "goal-status", "all"].includes(scope)) throw new Error("escopo inválido: " + scope);
     const previousState = structuredClone(runtime.state);
     const nextLedger = scope === "all" || scope === "ledger"
       ? await loadIdLedger(runtime.ctx.secrets, "subathon-ids") : runtime.idLedger;
@@ -788,6 +868,7 @@ async function resetState(runtime, input) {
     }
     if (scope === "timer") runtime.state.timer = initialState(runtime.config).timer;
     if (scope === "ledger") runtime.state.ledger = [];
+    if (scope === "goal-status") runtime.state.goalStatus = {};
     runtime.state.idLedger = nextLedger.descriptor;
     runtime.state.revision += 1;
     const nextState = runtime.state;
@@ -797,6 +878,112 @@ async function resetState(runtime, input) {
     runtime.idLedger = nextLedger;
     emitState(runtime);
     return { scope, ok: true };
+  });
+}
+
+function normalizeGoalStatusInput(value) {
+  const text = asText(value, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\s_]+/g, "-");
+  if (["pending", "pendente"].includes(text)) return "pending";
+  if (["in-progress", "em-andamento", "andamento"].includes(text)) return "in-progress";
+  if (["done", "concluida", "finalizada", "completed"].includes(text)) return "done";
+  return "";
+}
+
+/** A goal id from the picker, a shortcut, or an exact title written in a formula. */
+function resolveGoalTargets(goals, reference, status) {
+  if (!reference) throw new Error("escolha a meta");
+  if (reference === "@active") {
+    const goal = goals.find((entry) => entry.active);
+    if (!goal) throw new Error("nenhuma meta está em andamento");
+    return [goal];
+  }
+  if (reference === "@next") {
+    const goal = goals.find((entry) => entry.reached && entry.execution === "pending");
+    if (!goal) throw new Error("nenhuma meta alcançada está pendente");
+    return [goal];
+  }
+  if (reference === "@reached") {
+    if (status === "in-progress") throw new Error("somente uma meta fica em andamento; escolha uma meta");
+    const reached = goals.filter((entry) => entry.reached);
+    if (!reached.length) throw new Error("nenhuma meta foi alcançada ainda");
+    return reached;
+  }
+  const byId = goals.find((entry) => entry.id === reference);
+  if (byId) return [byId];
+  const folded = reference.toLocaleLowerCase("pt-BR");
+  const byTitle = goals.filter((entry) => entry.title.toLocaleLowerCase("pt-BR") === folded);
+  if (byTitle.length === 1) return byTitle;
+  throw new Error(byTitle.length > 1 ? "mais de uma meta tem o título " + reference : "meta não encontrada: " + reference);
+}
+
+function goalStatusPayload(goal, previousStatus, status, activeGoal) {
+  return {
+    goalId: goal.id,
+    type: goal.type,
+    title: goal.title,
+    target: goal.target,
+    targetLabel: goal.targetLabel,
+    reached: goal.reached,
+    status,
+    statusLabel: GOAL_STATUS_LABELS[status],
+    previousStatus,
+    activeGoalId: activeGoal ? activeGoal.id : "",
+    activeTitle: activeGoal ? activeGoal.title : "",
+  };
+}
+
+async function setGoalStatus(runtime, input) {
+  return queueMutation(runtime, async () => {
+    const status = normalizeGoalStatusInput(input.status);
+    if (!status) throw new Error("situação inválida: use Pendente, Em andamento ou Concluída");
+    const goals = calculatedGoals(runtime);
+    const targets = resolveGoalTargets(goals, asText(input.goalId, ""), status);
+    const nextStatus = { ...runtime.state.goalStatus };
+    const changes = [];
+    // Only one goal is in progress: starting another returns the previous one to pending.
+    if (status === "in-progress") {
+      for (const [id, value] of Object.entries(nextStatus)) {
+        if (value !== "in-progress" || id === targets[0].id) continue;
+        delete nextStatus[id];
+        const goal = goals.find((entry) => entry.id === id);
+        if (goal) changes.push({ goal, previous: "in-progress", status: "pending" });
+      }
+    }
+    for (const goal of targets) {
+      const previous = nextStatus[goal.id] || "pending";
+      if (status === "pending") delete nextStatus[goal.id];
+      else nextStatus[goal.id] = status;
+      if (previous !== status) changes.push({ goal, previous, status });
+    }
+    if (changes.length) {
+      // Written before it is published: a failed write leaves the old statuses in place.
+      const nextState = { ...runtime.state, goalStatus: nextStatus, revision: runtime.state.revision + 1 };
+      await persist(runtime, true, nextState);
+      runtime.state = nextState;
+    }
+    const after = calculatedGoals(runtime);
+    const activeGoal = after.find((goal) => goal.active) || null;
+    if (changes.length) {
+      emitState(runtime);
+      for (const change of changes) {
+        const goal = after.find((entry) => entry.id === change.goal.id) || change.goal;
+        const payload = goalStatusPayload(goal, change.previous, change.status, activeGoal);
+        broadcast(runtime, "goal-status", payload);
+        runtime.ctx.emitTrigger("goal-status-changed", payload);
+      }
+    }
+    const first = after.find((goal) => goal.id === targets[0].id) || targets[0];
+    return {
+      changed: changes.length > 0,
+      goalId: first.id,
+      title: first.title,
+      status,
+      statusLabel: GOAL_STATUS_LABELS[status],
+      count: targets.length,
+      goalIds: targets.map((goal) => goal.id),
+      activeGoalId: activeGoal ? activeGoal.id : "",
+      activeTitle: activeGoal ? activeGoal.title : "",
+    };
   });
 }
 
@@ -912,8 +1099,166 @@ function sendText(res, status, text) {
   res.end(text);
 }
 
+/**
+ * Only the dashboard served by this server may change a goal. A page on any
+ * other site can reach 127.0.0.1 too, so a write needs a local Host (a rebound
+ * DNS name fails it), a same-server Origin when the browser sends one, and a JSON
+ * body, which a cross-site form cannot send and a cross-site fetch cannot send
+ * without a preflight this server never approves.
+ */
+function isTrustedWrite(runtime, req) {
+  const port = String(runtime.port);
+  const local = new Set(["127.0.0.1:" + port, "localhost:" + port]);
+  if (!local.has(String(req.headers.host || "").toLowerCase())) return false;
+  const origin = req.headers.origin;
+  if (origin !== undefined && !local.has(String(origin).toLowerCase().replace(/^http:\/\//, ""))) return false;
+  const site = req.headers["sec-fetch-site"];
+  if (site !== undefined && site !== "same-origin") return false;
+  return /^application\/json\b/i.test(String(req.headers["content-type"] || ""));
+}
+
+function readJsonBody(req, limit = 4096) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let size = 0;
+    const chunks = [];
+    const onData = (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        // Answer at once and drain the rest without keeping it.
+        req.off("data", onData);
+        req.resume();
+        rejectPromise(new Error("corpo grande demais"));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    req.on("data", onData);
+    req.on("end", () => {
+      if (size > limit) return;
+      try {
+        const value = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("envie um objeto JSON");
+        resolvePromise(value);
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    req.on("error", rejectPromise);
+  });
+}
+
+const DASHBOARD_TIMER_OPERATIONS = ["pause", "resume", "add", "subtract", "set", "reset"];
+
+/**
+ * The flow block turns an unreadable number into 0, which "set" would apply to a
+ * live countdown. The dashboard route refuses it instead, before anything changes.
+ */
+function dashboardTimerInput(body) {
+  const operation = typeof body.operation === "string" ? body.operation : "";
+  if (!DASHBOARD_TIMER_OPERATIONS.includes(operation)) throw new Error("operação de cronômetro inválida");
+  if (!["add", "subtract", "set"].includes(operation)) return { operation, seconds: 0 };
+  const seconds = typeof body.seconds === "number" ? body.seconds : Number.NaN;
+  if (!Number.isSafeInteger(seconds) || seconds < 0 || seconds > MAX_TIMER_SECONDS) {
+    throw new Error("informe os segundos como um número inteiro entre 0 e " + String(MAX_TIMER_SECONDS));
+  }
+  if (seconds === 0 && operation !== "set") throw new Error("informe um tempo maior que zero");
+  return { operation, seconds };
+}
+
+const TEST_ALERT_KINDS = [
+  "contribution-donate", "contribution-subs", "contribution-bits",
+  "goal-completed", "goal-in-progress", "goal-done", "timer-warning", "timer-finished",
+];
+
+/**
+ * Sends a sample alert to the overlays only. Nothing is persisted, no total or
+ * timer moves, and no flow trigger fires: the payload goes through the same
+ * event buffer the overlays poll, marked `test: true`.
+ */
+function sendTestAlert(runtime, body) {
+  const kind = typeof body.kind === "string" ? body.kind : "";
+  if (!TEST_ALERT_KINDS.includes(kind)) throw new Error("alerta de teste desconhecido");
+  const now = snapshot(runtime);
+  const sampleGoal = now.activeGoal || now.currentGoal || now.goals[0] || {
+    id: "teste", type: "donate", title: "Meta de teste", target: 10000, targetLabel: formatAmount("donate", 10000),
+    current: 10000, reached: true,
+  };
+  let name = kind;
+  let payload;
+  if (kind.startsWith("contribution-")) {
+    const type = kind.slice("contribution-".length);
+    const value = type === "donate" ? 1000 : type === "subs" ? 1 : 500;
+    const tier = type === "subs" ? "1000" : "";
+    const secondsAdded = contributionSeconds(runtime, type, value, tier);
+    name = "contribution";
+    payload = {
+      type, value, valueLabel: formatAmount(type, value), actorName: "Teste do painel",
+      secondsAdded, addedLabel: formatTime(secondsAdded), source: "teste", tier,
+      receivedAt: new Date().toISOString(), remainingSeconds: now.timer.remainingSeconds,
+    };
+  } else if (kind === "goal-completed") {
+    const index = now.goals.findIndex((goal) => goal.id === sampleGoal.id);
+    const next = index >= 0 ? now.goals.slice(index + 1).find((goal) => !goal.completed) : null;
+    payload = {
+      goalId: sampleGoal.id, type: sampleGoal.type, title: sampleGoal.title, target: sampleGoal.target,
+      targetLabel: sampleGoal.targetLabel, total: sampleGoal.current, completedCount: now.completedGoals,
+      nextTitle: next ? next.title : "", timerChanged: false,
+    };
+  } else if (kind === "goal-in-progress" || kind === "goal-done") {
+    const status = kind === "goal-done" ? "done" : "in-progress";
+    name = "goal-status";
+    payload = goalStatusPayload(sampleGoal, sampleGoal.execution || "pending", status, now.activeGoal);
+  } else if (kind === "timer-warning") {
+    const threshold = runtime.config.warningThresholds[runtime.config.warningThresholds.length - 1] || 300;
+    payload = { thresholdSeconds: threshold, remainingSeconds: threshold, formatted: formatTime(threshold) };
+  } else {
+    payload = {
+      finishedAt: new Date().toISOString(),
+      formatted: "00:00:00",
+      totals: { donate: now.totals.donate, subs: now.totals.subs, bits: now.totals.bits, addedSeconds: now.totals.addedSeconds },
+    };
+  }
+  broadcast(runtime, name, { ...payload, test: true });
+  return { kind, event: name };
+}
+
+const DASHBOARD_WRITES = {
+  "/api/goal-status": (runtime, body) => setGoalStatus(runtime, { goalId: body.goalId, status: body.status }),
+  "/api/timer": (runtime, body) => controlTimer(runtime, dashboardTimerInput(body)),
+  "/api/test-alert": async (runtime, body) => sendTestAlert(runtime, body),
+};
+
+async function handleDashboardWrite(runtime, req, res, apply) {
+  if (!isTrustedWrite(runtime, req)) {
+    sendJson(res, 403, { ok: false, error: "use o painel em http://127.0.0.1:" + String(runtime.port) + "/dashboard" });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { ok: false, error: describe(error) });
+    return;
+  }
+  try {
+    const result = await apply(runtime, body);
+    if (result && result.ok === false) {
+      sendJson(res, 503, result);
+      return;
+    }
+    sendJson(res, 200, { ok: true, ...result });
+  } catch (error) {
+    sendJson(res, 400, { ok: false, error: describe(error) });
+  }
+}
+
 async function handleRequest(runtime, req, res) {
   const url = new URL(req.url || "/", "http://127.0.0.1");
+  const write = Object.hasOwn(DASHBOARD_WRITES, url.pathname) ? DASHBOARD_WRITES[url.pathname] : null;
+  if (write && req.method === "POST") {
+    await handleDashboardWrite(runtime, req, res, write);
+    return;
+  }
   if (req.method !== "GET" && req.method !== "HEAD") {
     sendText(res, 405, "Method Not Allowed");
     return;
@@ -968,6 +1313,10 @@ async function handleRequest(runtime, req, res) {
     }
     res.writeHead(200, commonHeaders(contentTypeForFont(path)));
     createReadStream(path).pipe(res);
+    return;
+  }
+  if (url.pathname === "/dashboard") {
+    await sendStatic(res, "dashboard.html", "text/html; charset=utf-8");
     return;
   }
   if (OVERLAY_PATHS.has(url.pathname) || url.pathname === "/") {
@@ -1105,6 +1454,7 @@ function registerActions(runtime) {
   ctx.registerAction("timer-control", (data) => controlTimer(runtime, data));
   ctx.registerAction("set-total", (data) => setTotal(runtime, data));
   ctx.registerAction("reset-state", (data) => resetState(runtime, data));
+  ctx.registerAction("set-goal-status", (data) => setGoalStatus(runtime, data));
   ctx.registerAction("get-state", async () => snapshot(runtime));
 }
 
@@ -1157,6 +1507,7 @@ export default {
       port: config.port,
       eventSeq: 0,
       recentEvents: [],
+      goalResourceSignature: "",
     };
     await persist(runtime, true);
     activeRuntime = runtime;

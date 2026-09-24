@@ -10,6 +10,8 @@
     "/overlay/progress-pill": "progress-pill",
     "/overlay/timer-giant": "timer-giant",
     "/overlay/alerts": "alerts",
+    "/overlay/goals-active": "goals-active",
+    "/overlay/goals-list": "goals-list",
   };
   const labels = { donate: "Donate", subs: "Subs", bits: "Bits" };
   const params = new URLSearchParams(window.location.search);
@@ -159,6 +161,14 @@
     return false;
   }
 
+  /** One class per goal stage; a goal on its way keeps the current/next split of 0.4. */
+  function stageClass(prefix, goal) {
+    if (goal.stage === "in-progress") return prefix + "--active";
+    if (goal.stage === "done") return prefix + "--done";
+    if (goal.stage === "reached") return prefix + "--reached";
+    return prefix + "--" + goal.status;
+  }
+
   function renderFooterGoals(goals) {
     const list = document.querySelector("[data-goals-footer-list]");
     if (!list) return;
@@ -176,81 +186,208 @@
       }
       existing.delete(goal.id);
       if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
-      item.className = "footer-goal glass-card footer-goal--" + goal.status + " goal--" + goal.type;
+      item.className = "footer-goal glass-card " + stageClass("footer-goal", goal) + " goal--" + goal.type;
       item.dataset.goalId = goal.id;
       setMarqueeText(item.querySelector("strong"), goal.title);
-      item.querySelector(".footer-goal__copy > span").textContent = goal.targetLabel;
+      item.querySelector(".footer-goal__copy > span").textContent = goal.stage === "open"
+        ? goal.targetLabel
+        : goal.targetLabel + " · " + goal.stageLabel;
       const fill = item.querySelector(".bar-fill");
       fill.style.setProperty("--fill", String(goal.progress / 100));
+      const showCheck = goal.stage === "reached" || goal.stage === "done";
       const check = item.querySelector(".goal-check");
-      if (goal.completed && !check) append(item, "span", "goal-check");
-      if (!goal.completed && check) check.remove();
+      if (showCheck && !check) append(item, "span", "goal-check");
+      if (!showCheck && check) check.remove();
+      const badge = item.querySelector(".goal-live");
+      if (goal.active && !badge) append(item, "span", "goal-live", "Em andamento");
+      if (!goal.active && badge) badge.remove();
     }
     for (const item of existing.values()) item.remove();
     staggerIn(list);
   }
 
-  const footerViewport = view === "goals-footer" ? document.querySelector("[data-goals-footer-viewport]") : null;
-  const footerTrack = footerViewport && footerViewport.querySelector("[data-goals-footer-list]");
-  let footerAnimation = null;
-  let footerDistance = 0;
+  /**
+   * Scrolls an overflowing track back and forth with a pause at each end, never
+   * duplicating cards. Pauses while the pointer or keyboard focus is inside.
+   */
+  function autoScroll(viewport, track, axis, pixelsPerSecond) {
+    let animation = null;
+    let distance = 0;
+    const translate = axis === "y" ? "translateY" : "translateX";
 
-  function syncFooterScroll() {
-    if (!footerTrack) return;
-    const distance = Math.max(0, footerTrack.scrollWidth - footerViewport.clientWidth);
-    const shouldScroll = motionAllowed() && distance > 2;
-    if (shouldScroll && footerAnimation && footerDistance === distance) return;
-    if (footerAnimation) footerAnimation.cancel();
-    footerAnimation = null;
-    footerDistance = distance;
-    footerViewport.classList.toggle("is-scrolling", shouldScroll);
-    if (!shouldScroll) return;
-    footerViewport.scrollLeft = 0;
-    // Pause at both ends, then retrace the row without a jump or duplicate cards.
-    // Alternating iterations meet at each end, so two one-second holds add up.
-    const duration = distance / 32 * 1000 + 2000;
-    const pause = 1000 / duration;
-    footerAnimation = footerTrack.animate([
-      { transform: "translateX(0)", offset: 0 },
-      { transform: "translateX(0)", offset: pause },
-      { transform: "translateX(" + String(-distance) + "px)", offset: 1 - pause },
-      { transform: "translateX(" + String(-distance) + "px)", offset: 1 },
-    ], { duration, iterations: Infinity, direction: "alternate", easing: "linear" });
-    if (footerViewport.matches(":hover, :focus-within")) footerAnimation.pause();
-  }
+    function sync(restart) {
+      const size = axis === "y"
+        ? track.scrollHeight - viewport.clientHeight
+        : track.scrollWidth - viewport.clientWidth;
+      const nextDistance = Math.max(0, size);
+      const shouldScroll = motionAllowed() && nextDistance > 2;
+      if (!restart && shouldScroll && animation && distance === nextDistance) return;
+      if (animation) animation.cancel();
+      animation = null;
+      distance = nextDistance;
+      viewport.classList.toggle("is-scrolling", shouldScroll);
+      if (!shouldScroll) return;
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+      // Alternating iterations meet at each end, so two one-second holds add up.
+      const duration = distance / pixelsPerSecond * 1000 + 2000;
+      const pause = 1000 / duration;
+      animation = track.animate([
+        { transform: translate + "(0)", offset: 0 },
+        { transform: translate + "(0)", offset: pause },
+        { transform: translate + "(" + String(-distance) + "px)", offset: 1 - pause },
+        { transform: translate + "(" + String(-distance) + "px)", offset: 1 },
+      ], { duration, iterations: Infinity, direction: "alternate", easing: "linear" });
+      if (viewport.matches(":hover, :focus-within")) animation.pause();
+    }
 
-  if (footerViewport) {
-    new ResizeObserver(syncFooterScroll).observe(footerViewport);
-    new ResizeObserver(syncFooterScroll).observe(footerTrack);
-    reducedMotion.addEventListener("change", syncFooterScroll);
+    new ResizeObserver(function () { sync(false); }).observe(viewport);
+    new ResizeObserver(function () { sync(false); }).observe(track);
+    reducedMotion.addEventListener("change", function () { sync(false); });
     for (const event of ["pointerenter", "focusin"]) {
-      footerViewport.addEventListener(event, function () { if (footerAnimation) footerAnimation.pause(); });
+      viewport.addEventListener(event, function () { if (animation) animation.pause(); });
     }
     for (const event of ["pointerleave", "focusout"]) {
-      footerViewport.addEventListener(event, function () {
-        if (footerAnimation && !footerViewport.matches(":hover, :focus-within")) footerAnimation.play();
+      viewport.addEventListener(event, function () {
+        if (animation && !viewport.matches(":hover, :focus-within")) animation.play();
       });
     }
+    return sync;
+  }
+
+  const footerViewport = view === "goals-footer" ? document.querySelector("[data-goals-footer-viewport]") : null;
+  const syncFooterScroll = footerViewport
+    ? autoScroll(footerViewport, footerViewport.querySelector("[data-goals-footer-list]"), "x", 32)
+    : function () {};
+
+  const listSpeed = Number(params.get("speed"));
+  const listViewport = view === "goals-list" ? document.querySelector("[data-goals-list-viewport]") : null;
+  const syncListScroll = listViewport
+    ? autoScroll(
+      listViewport,
+      listViewport.querySelector("[data-goals-list]"),
+      "y",
+      Number.isFinite(listSpeed) && listSpeed >= 8 && listSpeed <= 200 ? listSpeed : 28,
+    )
+    : function () {};
+
+  /** In progress first, then everything not done yet, then what is done; config order inside each group. */
+  function listOrder(goals) {
+    const rank = function (goal) { return goal.active ? 0 : goal.execution === "done" ? 2 : 1; };
+    return goals
+      .map(function (goal, index) { return [goal, index]; })
+      .sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; })
+      .map(function (entry) { return entry[0]; });
+  }
+
+  function listChip(goal) {
+    if (goal.stage !== "open") return goal.stageLabel;
+    return goal.status === "current" ? "Próxima" : "";
+  }
+
+  function goalSummary(state) {
+    const counts = state.goalCounts || {};
+    const total = state.goals.length;
+    if (!total) return "Nenhuma meta configurada";
+    return String(counts.reached || 0) + " de " + String(total) + " alcançadas · "
+      + String(counts.done || 0) + (counts.done === 1 ? " concluída" : " concluídas");
+  }
+
+  let listFirstId = "";
+  function renderGoalsList(state) {
+    const list = document.querySelector("[data-goals-list]");
+    if (!list) return;
+    setText("[data-goals-list-summary]", goalSummary(state));
+    const goals = listOrder(state.goals);
+    if (unchanged(list, JSON.stringify(goals))) return;
+    // Rows move in place, so a contribution never restarts the scroll or a title.
+    const existing = new Map(Array.from(list.children, (item) => [item.dataset.goalId, item]));
+    for (const [index, goal] of goals.entries()) {
+      let item = existing.get(goal.id);
+      if (!item) {
+        item = document.createElement("li");
+        append(item, "span", "list-goal__marker").setAttribute("aria-hidden", "true");
+        const body = append(item, "div", "list-goal__body");
+        const meta = append(body, "p", "list-goal__meta");
+        append(meta, "span", "list-goal__kind");
+        append(meta, "b", "list-goal__chip");
+        appendMarquee(body, "strong", "list-goal__title", goal.title);
+        const progress = append(body, "div", "list-goal__progress");
+        append(append(progress, "div", "list-goal__bar"), "i", "bar-fill");
+        append(progress, "span", "list-goal__amount");
+        append(item, "strong", "list-goal__percent");
+      }
+      existing.delete(goal.id);
+      if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
+      item.className = "list-goal glass-card " + stageClass("list-goal", goal) + " goal--" + goal.type;
+      item.dataset.goalId = goal.id;
+      item.querySelector(".list-goal__kind").textContent = labels[goal.type] || goal.type;
+      const chip = listChip(goal);
+      const chipElement = item.querySelector(".list-goal__chip");
+      chipElement.textContent = chip;
+      chipElement.hidden = !chip;
+      setMarqueeText(item.querySelector(".list-goal__title"), goal.title);
+      item.querySelector(".list-goal__amount").textContent = goal.reached ? goal.targetLabel : goal.amountLabel;
+      item.querySelector(".list-goal__percent").textContent = String(goal.progress) + "%";
+      item.querySelector(".bar-fill").style.setProperty("--fill", String(goal.progress / 100));
+    }
+    for (const item of existing.values()) item.remove();
+    staggerIn(list);
+    // A new goal in progress moves to the top; start from there so it is seen first.
+    const firstId = goals.length ? goals[0].id : "";
+    const restart = firstId !== listFirstId;
+    listFirstId = firstId;
+    syncListScroll(restart);
+  }
+
+  let activeGoalId = "";
+  function renderActiveGoal(state) {
+    const card = document.querySelector("[data-active-goal]");
+    if (!card) return;
+    const goal = state.activeGoal;
+    card.classList.toggle("is-empty", !goal);
+    if (!goal) {
+      activeGoalId = "";
+      return;
+    }
+    card.className = card.className.replace(/\bgoal--\w+\b/g, "").trim() + " goal--" + goal.type;
+    card.dataset.goalId = goal.id;
+    setText("[data-active-goal-title]", goal.title);
+    setText("[data-active-goal-kind]", labels[goal.type] || goal.type);
+    setText("[data-active-goal-amount]", goal.reached ? "Meta de " + goal.targetLabel : goal.amountLabel);
+    if (!firstRender && goal.id !== activeGoalId && motionAllowed()) {
+      card.classList.remove("is-celebrating");
+      void card.offsetWidth;
+      card.classList.add("is-celebrating");
+      window.setTimeout(function () { card.classList.remove("is-celebrating"); }, 1200);
+    }
+    activeGoalId = goal.id;
   }
 
   function renderTotem(state) {
     const list = document.querySelector("[data-goals-totem-list]");
     if (!list) return;
-    const pending = state.goals.filter(function (goal) { return !goal.completed; });
-    const source = pending.length ? pending : state.goals.slice().reverse();
+    // The goal in progress leads, then the goals still on their way.
+    const active = state.goals.filter(function (goal) { return goal.active; });
+    const pending = state.goals.filter(function (goal) { return !goal.completed && !goal.active; });
+    const source = active.length || pending.length ? active.concat(pending) : state.goals.slice().reverse();
     const goals = source.slice(0, state.display.maxTotemGoals);
-    const summary = String(state.completedGoals) + " de " + String(state.goals.length) + " concluídas";
-    const nextLabel = state.currentGoal && !state.currentGoal.completed ? "Atual: " + state.currentGoal.title : "Todas as metas concluídas";
-    if (unchanged(list, JSON.stringify([goals.map((goal) => [goal.id, goal.status, goal.progress, goal.title, goal.amountLabel]), summary, nextLabel]))) return;
+    const counts = state.goalCounts || {};
+    const summary = String(counts.reached || 0) + "/" + String(state.goals.length) + " alcançadas";
+    const nextLabel = state.activeGoal
+      ? "Em andamento: " + state.activeGoal.title
+      : state.currentGoal && !state.currentGoal.completed ? "Atual: " + state.currentGoal.title : "Todas as metas alcançadas";
+    if (unchanged(list, JSON.stringify([goals.map((goal) => [goal.id, goal.status, goal.stage, goal.progress, goal.title, goal.amountLabel]), summary, nextLabel]))) return;
     list.replaceChildren();
     for (const [displayIndex, goal] of goals.entries()) {
-      const card = append(list, "article", "totem-card glass-card totem-card--" + goal.type + " goal--" + goal.type + (goal.status === "current" ? " is-current" : ""));
+      const focus = goal.active ? " is-active" : goal.status === "current" ? " is-current" : "";
+      const card = append(list, "article", "totem-card glass-card totem-card--" + goal.type + " goal--" + goal.type + focus);
       card.dataset.goalId = goal.id;
       append(card, "div", "totem-card__index", String(displayIndex + 1).padStart(2, "0"));
       const content = append(card, "div", "totem-card__content");
       const meta = append(content, "div", "totem-card__meta");
-      append(meta, "span", "", labels[goal.type] || goal.type);
-      append(meta, "b", "", goal.amountLabel);
+      append(meta, "span", "", goal.active ? "Em andamento · " + (labels[goal.type] || goal.type) : labels[goal.type] || goal.type);
+      append(meta, "b", "", goal.reached ? goal.targetLabel : goal.amountLabel);
       appendMarquee(content, "h2", "", goal.title);
       const bar = append(content, "div", "totem-card__bar");
       const fill = append(bar, "i", "bar-fill");
@@ -334,7 +471,7 @@
 
     const goal = state.currentGoal && !state.currentGoal.completed ? state.currentGoal : null;
     const next = state.nextGoal;
-    setText("[data-current-goal-title]", goal ? goal.title : "Todas as metas concluídas");
+    setText("[data-current-goal-title]", goal ? goal.title : "Todas as metas alcançadas");
     setText("[data-current-goal-amount]", goal ? goal.amountLabel : "100%");
     setText("[data-current-goal-percent]", goal ? String(goal.progress) + "%" : "100%");
     setFill("[data-current-goal-fill]", goal ? goal.progress : 100);
@@ -344,7 +481,7 @@
     }
 
     setText("[data-pill-kind]", goal ? labels[goal.type] : "Comunidade");
-    setText("[data-pill-amount]", goal ? goal.amountLabel.replace(" / ", " de ") : "Metas concluídas");
+    setText("[data-pill-amount]", goal ? goal.amountLabel.replace(" / ", " de ") : "Metas alcançadas");
     setText("[data-pill-title]", goal ? goal.title : "Subathon completo");
     setText("[data-pill-percent]", goal ? String(goal.progress) + "%" : "100%");
     setFill("[data-pill-fill]", goal ? goal.progress : 100);
@@ -352,6 +489,8 @@
     renderFooterGoals(state.goals);
     syncFooterScroll();
     renderTotem(state);
+    renderActiveGoal(state);
+    renderGoalsList(state);
     renderScoreboard(state.score);
     document.body.classList.add("is-ready");
     firstRender = false;
@@ -397,117 +536,420 @@
     }
   }
 
+  /*
+   * Banners take the whole alerts layer, centered by default; ?banner=top|center|bottom
+   * moves them. One plays at a time: goal banners wait their turn, and several goals
+   * of the same kind queued together merge into one. The final stretch and the finish
+   * interrupt whatever is on screen, because the clock does not wait.
+   */
+  const BANNER_POSITIONS = ["top", "center", "bottom"];
+  const requestedBanner = String(params.get("banner") || "").toLowerCase();
+  document.body.dataset.bannerPosition = BANNER_POSITIONS.includes(requestedBanner) ? requestedBanner : "center";
+  const PARTY_EMOJIS = ["🎉", "🥳", "🎊", "🐼", "🐱", "✨", "💜", "🔥", "🙌", "🍾", "⭐", "🎈"];
+  const bannerQueue = [];
+  let bannerCurrent = null;
   let bannerTimer = 0;
-  function showBanner(kind, eyebrow, title, detail, duration) {
+
+  function bannerDuration(kind) {
+    const base = Math.max(2000, effects.celebrationSeconds * 1000);
+    if (kind === "finished") return Math.max(15000, base * 2.5);
+    if (kind === "goal") return base;
+    return Math.max(5000, base);
+  }
+
+  function queueBanner(item) {
+    if (!alertsEnabled) return;
+    if (item.kind === "finished") {
+      bannerQueue.length = 0;
+      showBanner(item);
+      return;
+    }
+    if (item.kind === "warning") {
+      if (bannerCurrent && bannerCurrent.kind === "finished") return;
+      // The interrupted goal banner plays again afterwards, so nobody misses it.
+      if (bannerCurrent) bannerQueue.unshift(bannerCurrent);
+      showBanner(item);
+      return;
+    }
+    const last = bannerQueue[bannerQueue.length - 1];
+    if (last && last.kind === item.kind && (item.kind === "goal" || item.kind === "goal-done")) {
+      last.titles = last.titles.concat(item.titles);
+      return;
+    }
+    bannerQueue.push(item);
+    if (!bannerCurrent) nextBanner();
+  }
+
+  function nextBanner() {
+    const item = bannerQueue.shift();
+    bannerCurrent = null;
+    if (item) showBanner(item);
+  }
+
+  /** Letters pop one after another; words never break in the middle. */
+  function splitLetters(parent, text, colorful) {
+    const perLetter = text.length <= 64;
+    let index = 0;
+    text.split(/(\s+)/).forEach(function (part) {
+      if (!part) return;
+      if (/^\s+$/.test(part)) {
+        parent.appendChild(document.createTextNode(" "));
+        return;
+      }
+      const word = append(parent, "span", "epic__word");
+      const pieces = perLetter ? Array.from(part) : [part];
+      for (const piece of pieces) {
+        const char = append(word, "span", "epic__char" + (colorful ? " epic__char--c" + String(index % 4) : ""), piece);
+        char.style.setProperty("--i", String(Math.min(index, 40)));
+        index += 1;
+      }
+    });
+  }
+
+  function checkStamp(parent) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "epic__stamp");
+    svg.setAttribute("viewBox", "0 0 52 52");
+    svg.setAttribute("aria-hidden", "true");
+    const circle = document.createElementNS(ns, "circle");
+    circle.setAttribute("class", "epic__stamp-circle");
+    circle.setAttribute("cx", "26");
+    circle.setAttribute("cy", "26");
+    circle.setAttribute("r", "23");
+    const mark = document.createElementNS(ns, "path");
+    mark.setAttribute("class", "epic__stamp-mark");
+    mark.setAttribute("d", "M14.5 27.5 l8 8 l15.5 -17");
+    svg.append(circle, mark);
+    parent.appendChild(svg);
+  }
+
+  function showBanner(item) {
     const banner = document.querySelector("[data-celebration]");
     if (!banner) return;
     window.clearTimeout(bannerTimer);
-    banner.className = "celebration celebration--" + kind;
-    setText("[data-celebration-eyebrow]", eyebrow);
-    setText("[data-celebration-title]", title);
-    setText("[data-celebration-next]", detail);
+    bannerCurrent = item;
+    const titles = item.titles || [item.title];
+    const title = titles.length > 1 && item.pluralTitle ? item.pluralTitle(titles.length) : titles[0];
+    const detail = titles.length > 1 ? titles.join(" · ") : item.detail;
+    const duration = bannerDuration(item.kind);
+
+    banner.replaceChildren();
+    banner.className = "celebration celebration--" + item.kind;
+    banner.style.setProperty("--epic-duration", String(duration) + "ms");
+    const decor = append(banner, "div", "epic__decor");
+    decor.setAttribute("aria-hidden", "true");
+    append(decor, "i", "epic__flash");
+    if (item.kind === "warning") append(decor, "i", "epic__vignette");
+    if (item.kind === "finished") append(decor, "i", "epic__disco");
+    const beams = append(decor, "div", "epic__beams");
+    append(beams, "i");
+    append(beams, "i");
+    if (item.kind === "finished") {
+      const party = append(decor, "div", "epic__party");
+      for (let index = 0; index < 28; index += 1) {
+        const emoji = append(party, "span", "", PARTY_EMOJIS[index % PARTY_EMOJIS.length]);
+        emoji.style.setProperty("--x", String(Math.round(Math.random() * 96) + 2) + "%");
+        emoji.style.setProperty("--delay", String(Math.round(Math.random() * 4000)) + "ms");
+        emoji.style.setProperty("--dur", String(Math.round(3800 + Math.random() * 3200)) + "ms");
+        emoji.style.setProperty("--size", String((2.2 + Math.random() * 2.6).toFixed(2)) + "cqw");
+        emoji.style.setProperty("--spin", String(Math.round((Math.random() - 0.5) * 120)) + "deg");
+      }
+    }
+
+    const stage = append(banner, "div", "epic__stage");
+    const rays = append(stage, "i", "epic__rays");
+    rays.setAttribute("aria-hidden", "true");
+    const rings = append(stage, "div", "epic__rings");
+    rings.setAttribute("aria-hidden", "true");
+    for (let index = 0; index < 3; index += 1) append(rings, "i");
+    if (item.kind === "goal-done") {
+      const stars = append(stage, "div", "epic__stars");
+      stars.setAttribute("aria-hidden", "true");
+      for (let index = 0; index < 8; index += 1) append(stars, "i");
+    }
+    const card = append(stage, "div", "epic__card");
+    const shine = append(card, "i", "epic__shine");
+    shine.setAttribute("aria-hidden", "true");
+    if (item.kind === "warning") {
+      append(card, "i", "epic__hazard epic__hazard--top").setAttribute("aria-hidden", "true");
+      append(card, "i", "epic__hazard epic__hazard--bottom").setAttribute("aria-hidden", "true");
+    }
+    if (item.kind === "goal-done") checkStamp(card);
+    append(card, "span", "epic__eyebrow", item.eyebrow);
+    const titleElement = append(card, "strong", "epic__title");
+    splitLetters(titleElement, title, item.kind === "finished");
+    // The cascade finishes within about a second however long the title is.
+    titleElement.style.setProperty("--step", String(Math.max(12, Math.min(32, Math.round(900 / Math.max(1, title.length))))) + "ms");
+    if (detail) append(card, "span", "epic__detail", detail);
+    if (item.sticker) append(card, "span", "epic__sticker", item.sticker);
+
     banner.hidden = false;
-    requestAnimationFrame(function () { banner.classList.add("is-in"); });
+    void banner.offsetWidth;
+    banner.classList.add("is-in");
+    if (item.onShow) item.onShow(duration);
     bannerTimer = window.setTimeout(function () {
       banner.classList.remove("is-in");
       banner.classList.add("is-out");
-      bannerTimer = window.setTimeout(function () { banner.hidden = true; }, 320);
+      bannerTimer = window.setTimeout(function () {
+        banner.hidden = true;
+        banner.replaceChildren();
+        nextBanner();
+      }, 600);
     }, duration);
+  }
+
+  function highlightGoalCards(goalId, duration) {
+    for (const card of document.querySelectorAll('[data-goal-id="' + goalId + '"]')) {
+      card.classList.add("is-celebrating");
+      window.setTimeout(function () { card.classList.remove("is-celebrating"); }, duration);
+    }
+  }
+
+  function goalDetail(payload) {
+    return (labels[payload.type] || payload.type) + " · " + payload.targetLabel;
   }
 
   function celebrateGoal(payload) {
     if (!effects.celebrateGoals) return;
-    const duration = Math.max(2000, effects.celebrationSeconds * 1000);
-    for (const card of document.querySelectorAll('[data-goal-id="' + payload.goalId + '"]')) {
-      card.classList.add("is-celebrating");
-      window.setTimeout(function () { card.classList.remove("is-celebrating"); }, duration);
-    }
-    if (!alertsEnabled) return;
-    showBanner(
-      "goal",
-      "Meta concluída",
-      payload.title,
-      payload.nextTitle ? "Próxima: " + payload.nextTitle : "Todas as metas concluídas",
-      duration,
-    );
-    launchConfetti(duration);
+    highlightGoalCards(payload.goalId, bannerDuration("goal"));
+    queueBanner({
+      kind: "goal",
+      eyebrow: "Meta alcançada",
+      titles: [payload.title],
+      pluralTitle: function (count) { return String(count) + " metas alcançadas"; },
+      detail: payload.nextTitle ? "Próxima: " + payload.nextTitle : "Todas as metas alcançadas",
+      sticker: "BATEMOS!",
+      onShow: function (duration) {
+        confettiCannons(1);
+        runConfetti(duration);
+      },
+    });
   }
 
-  /* Confetti on a 2D canvas: transform-only work, stops itself when every piece has fallen. */
-  let confettiFrame = 0;
-  function launchConfetti(duration) {
-    if (!motionAllowed()) return;
-    const canvas = document.querySelector("[data-confetti]");
-    if (!canvas) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const styles = getComputedStyle(document.documentElement);
-    const palette = ["--coral", "--purple", "--cyan", "--text"].map(function (name) {
-      return styles.getPropertyValue(name).trim() || "#ffffff";
+  /* Starting or finishing a goal is news for the audience; returning one to pending is not. */
+  function announceGoalStatus(payload) {
+    if (!effects.celebrateGoals || payload.status === "pending") return;
+    const done = payload.status === "done";
+    highlightGoalCards(payload.goalId, bannerDuration(done ? "goal-done" : "goal-active"));
+    if (done) {
+      queueBanner({
+        kind: "goal-done",
+        eyebrow: "Meta concluída",
+        titles: [payload.title],
+        pluralTitle: function (count) { return String(count) + " metas concluídas"; },
+        detail: goalDetail(payload),
+        sticker: "FEITO!",
+        onShow: function (duration) {
+          confettiCannons(1.6);
+          runConfetti(duration, [
+            every(900, function () { confettiCannons(0.45); }, 3600),
+            every(200, function () { confettiRain(16); }, duration - 1200),
+          ]);
+        },
+      });
+      return;
+    }
+    queueBanner({
+      kind: "goal-active",
+      eyebrow: "Meta em andamento",
+      titles: [payload.title],
+      detail: goalDetail(payload),
+      sticker: "AGORA!",
     });
+  }
+
+  /* ---- Particles: confetti paper and firework sparks on one canvas. ---- */
+
+  const particles = { canvas: null, context: null, ratio: 1, pieces: [], emitters: [], until: 0, frame: 0, palette: [] };
+  const MAX_PIECES = 1400;
+
+  function particlesReady() {
+    if (!motionAllowed()) return false;
+    const canvas = document.querySelector("[data-confetti]");
+    const context = canvas && canvas.getContext("2d");
+    if (!context || !canvas.clientWidth) return false;
     const ratio = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.floor(canvas.clientWidth * ratio);
-    canvas.height = Math.floor(canvas.clientHeight * ratio);
-    const width = canvas.width;
-    const height = canvas.height;
-    const pieces = [];
-    const count = Math.round(Math.min(220, Math.max(120, width / 9)));
+    const width = Math.floor(canvas.clientWidth * ratio);
+    const height = Math.floor(canvas.clientHeight * ratio);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const styles = getComputedStyle(document.documentElement);
+    particles.palette = ["--coral", "--purple", "--cyan", "--text"].map(function (name) {
+      return styles.getPropertyValue(name).trim() || "#ffffff";
+    }).concat(["#ffd166"]);
+    particles.canvas = canvas;
+    particles.context = context;
+    particles.ratio = ratio;
+    return true;
+  }
+
+  function pickColor() {
+    return particles.palette[Math.floor(Math.random() * particles.palette.length)];
+  }
+
+  function addPaper(x, y, vx, vy) {
+    const ratio = particles.ratio;
+    particles.pieces.push({
+      x: x, y: y, vx: vx, vy: vy,
+      size: (5 + Math.random() * 8) * ratio,
+      color: pickColor(),
+      rotation: Math.random() * Math.PI,
+      spin: (Math.random() - 0.5) * 0.35,
+      wobble: Math.random() * Math.PI * 2,
+      round: Math.random() < 0.28,
+    });
+  }
+
+  /** Two cannons from the lower corners; `strength` scales how many pieces fly. */
+  function confettiCannons(strength) {
+    if (!particlesReady()) return;
+    const ratio = particles.ratio;
+    const width = particles.canvas.width;
+    const height = particles.canvas.height;
+    const count = Math.round(Math.min(260, Math.max(120, width / 9)) * strength);
     for (let index = 0; index < count; index += 1) {
       const fromLeft = index % 2 === 0;
-      pieces.push({
-        x: fromLeft ? -20 : width + 20,
-        y: height * (0.55 + Math.random() * 0.35),
-        vx: (fromLeft ? 1 : -1) * (6 + Math.random() * 9) * ratio,
-        vy: -(11 + Math.random() * 9) * ratio,
-        size: (5 + Math.random() * 7) * ratio,
-        color: palette[index % palette.length],
-        rotation: Math.random() * Math.PI,
-        spin: (Math.random() - 0.5) * 0.3,
-        wobble: Math.random() * Math.PI * 2,
-        round: Math.random() < 0.3,
+      addPaper(
+        fromLeft ? -20 : width + 20,
+        height * (0.55 + Math.random() * 0.35),
+        (fromLeft ? 1 : -1) * (6 + Math.random() * 10) * ratio,
+        -(11 + Math.random() * 10) * ratio,
+      );
+    }
+  }
+
+  function confettiRain(count) {
+    if (!particlesReady()) return;
+    const ratio = particles.ratio;
+    const width = particles.canvas.width;
+    for (let index = 0; index < count; index += 1) {
+      addPaper(Math.random() * width, -20 - Math.random() * 60, (Math.random() - 0.5) * 3 * ratio, (2 + Math.random() * 3) * ratio);
+    }
+  }
+
+  function firework() {
+    if (!particlesReady()) return;
+    const ratio = particles.ratio;
+    const x = particles.canvas.width * (0.12 + Math.random() * 0.76);
+    const y = particles.canvas.height * (0.1 + Math.random() * 0.4);
+    const color = pickColor();
+    const count = 70;
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index / count) * Math.PI * 2 + Math.random() * 0.2;
+      const speed = (2.5 + Math.random() * 5.5) * ratio;
+      particles.pieces.push({
+        spark: true, x: x, y: y,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        size: (2.2 + Math.random() * 2.2) * ratio,
+        color: Math.random() < 0.2 ? "#ffffff" : color,
+        life: 1, decay: 0.011 + Math.random() * 0.012,
       });
     }
-    const gravity = 0.32 * ratio;
-    const drag = 0.985;
-    const startedAt = performance.now();
-    canvas.classList.add("is-active");
-    cancelAnimationFrame(confettiFrame);
-    function frame(now) {
-      context.clearRect(0, 0, width, height);
-      let alive = 0;
-      const elapsed = now - startedAt;
-      const fade = elapsed > duration - 800 ? Math.max(0, (duration - elapsed) / 800) : 1;
-      for (const piece of pieces) {
-        piece.vy += gravity;
-        piece.vx *= drag;
-        piece.vy *= drag;
-        piece.x += piece.vx + Math.sin(piece.wobble) * ratio;
-        piece.y += piece.vy;
-        piece.rotation += piece.spin;
-        piece.wobble += 0.12;
-        if (piece.y < height + 40 && elapsed < duration) alive += 1;
-        context.save();
-        context.globalAlpha = fade;
-        context.translate(piece.x, piece.y);
-        context.rotate(piece.rotation);
-        context.fillStyle = piece.color;
-        if (piece.round) {
-          context.beginPath();
-          context.arc(0, 0, piece.size / 2, 0, Math.PI * 2);
-          context.fill();
-        } else {
-          context.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
-        }
-        context.restore();
-      }
-      if (alive > 0) {
-        confettiFrame = requestAnimationFrame(frame);
-      } else {
-        context.clearRect(0, 0, width, height);
-        canvas.classList.remove("is-active");
+  }
+
+  /** Runs `task` every `ms` milliseconds, for `lasting` milliseconds after it starts. */
+  function every(ms, task, lasting) {
+    return { ms: ms, task: task, lasting: lasting, started: 0, last: 0 };
+  }
+
+  function runConfetti(duration, emitters) {
+    if (!particlesReady()) return;
+    const now = performance.now();
+    particles.until = Math.max(particles.until, now + duration);
+    for (const emitter of emitters || []) {
+      emitter.started = now;
+      particles.emitters.push(emitter);
+    }
+    particles.canvas.classList.add("is-active");
+    if (!particles.frame) particles.frame = requestAnimationFrame(particleFrame);
+  }
+
+  function stopParticles() {
+    particles.pieces = [];
+    particles.emitters = [];
+    particles.until = 0;
+  }
+
+  function particleFrame(now) {
+    const canvas = particles.canvas;
+    const context = particles.context;
+    const ratio = particles.ratio;
+    const width = canvas.width;
+    const height = canvas.height;
+    context.clearRect(0, 0, width, height);
+    particles.emitters = particles.emitters.filter(function (emitter) {
+      return now - emitter.started < emitter.lasting && now < particles.until;
+    });
+    for (const emitter of particles.emitters) {
+      if (now - emitter.last >= emitter.ms) {
+        emitter.last = now;
+        emitter.task();
       }
     }
-    confettiFrame = requestAnimationFrame(frame);
+    const fade = now > particles.until - 800 ? Math.max(0, (particles.until - now) / 800) : 1;
+    const alive = [];
+    for (const piece of particles.pieces) {
+      if (now > particles.until) continue;
+      if (piece.spark) {
+        piece.vy += 0.07 * ratio;
+        piece.vx *= 0.97;
+        piece.vy *= 0.97;
+        piece.x += piece.vx;
+        piece.y += piece.vy;
+        piece.life -= piece.decay;
+        if (piece.life <= 0) continue;
+        context.globalAlpha = Math.min(1, piece.life * 1.4) * fade;
+        context.fillStyle = piece.color;
+        context.beginPath();
+        context.arc(piece.x, piece.y, piece.size * (0.4 + piece.life * 0.6), 0, Math.PI * 2);
+        context.fill();
+        alive.push(piece);
+        continue;
+      }
+      piece.vy += 0.32 * ratio;
+      piece.vx *= 0.985;
+      piece.vy *= 0.985;
+      piece.x += piece.vx + Math.sin(piece.wobble) * ratio;
+      piece.y += piece.vy;
+      piece.rotation += piece.spin;
+      piece.wobble += 0.12;
+      if (piece.y > height + 40) continue;
+      context.save();
+      context.globalAlpha = fade;
+      context.translate(piece.x, piece.y);
+      context.rotate(piece.rotation);
+      context.fillStyle = piece.color;
+      if (piece.round) {
+        context.beginPath();
+        context.arc(0, 0, piece.size / 2, 0, Math.PI * 2);
+        context.fill();
+      } else {
+        context.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
+      }
+      context.restore();
+      alive.push(piece);
+    }
+    context.globalAlpha = 1;
+    particles.pieces = alive.length > MAX_PIECES ? alive.slice(alive.length - MAX_PIECES) : alive;
+    if (particles.pieces.length || particles.emitters.length) {
+      particles.frame = requestAnimationFrame(particleFrame);
+      return;
+    }
+    context.clearRect(0, 0, width, height);
+    canvas.classList.remove("is-active");
+    particles.frame = 0;
+    particles.until = 0;
+  }
+
+  function formatDurationLabel(seconds) {
+    const safe = Math.max(0, Math.round(Number(seconds) || 0));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    if (hours > 0) return String(hours) + "h " + String(minutes).padStart(2, "0") + "min";
+    return String(minutes) + "min";
   }
 
   function flashWarning(payload) {
@@ -517,21 +959,44 @@
       document.body.classList.add("is-warning");
       window.setTimeout(function () { document.body.classList.remove("is-warning"); }, 2400);
     }
-    if (alertsEnabled && payload) {
-      showBanner("warning", "Reta final", "Restam " + payload.formatted, "O cronômetro segue até zerar", Math.max(2000, effects.celebrationSeconds * 1000));
-    }
+    if (!payload) return;
+    queueBanner({
+      kind: "warning",
+      eyebrow: "Reta final · restam",
+      title: payload.formatted,
+      detail: "Cada apoio ainda adiciona tempo ao cronômetro",
+    });
   }
 
   function announceFinished(payload) {
     pulseTimer();
-    if (alertsEnabled && payload) {
-      showBanner("finished", "Subathon encerrado", "00:00:00", "Obrigado a quem apoiou", Math.max(4000, effects.celebrationSeconds * 1000));
-    }
+    if (!payload) return;
+    const added = payload.totals && payload.totals.addedSeconds;
+    stopParticles();
+    queueBanner({
+      kind: "finished",
+      eyebrow: "00:00:00 · acabou!",
+      title: "SUBATHON FINALIZADO!",
+      detail: added > 0
+        ? "Vocês somaram " + formatDurationLabel(added) + " ao cronômetro. Obrigado, comunidade!"
+        : "Obrigado, comunidade!",
+      sticker: "OBRIGADO!",
+      onShow: function (duration) {
+        confettiCannons(2);
+        firework();
+        runConfetti(duration, [
+          every(320, function () { confettiRain(16); }, duration - 1500),
+          every(650, firework, duration - 2000),
+          every(2100, function () { confettiCannons(0.6); }, duration - 2500),
+        ]);
+      },
+    });
   }
 
   const eventHandlers = {
     contribution: showToast,
     "goal-completed": celebrateGoal,
+    "goal-status": announceGoalStatus,
     "timer-warning": flashWarning,
     "timer-finished": announceFinished,
   };
