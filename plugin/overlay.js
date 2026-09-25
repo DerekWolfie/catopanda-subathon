@@ -25,10 +25,27 @@
   const alertsEnabled = view === "alerts" || ["1", "true", "yes"].includes(String(params.get("alerts") || "").toLowerCase());
   const ALERT_POSITIONS = ["top-right", "top-left", "top-center", "bottom-right", "bottom-left", "bottom-center"];
 
-  const scale = Number(params.get("scale"));
-  if (Number.isFinite(scale) && scale >= 0.5 && scale <= 2) {
-    document.documentElement.style.setProperty("--overlay-scale", String(scale));
+  /**
+   * A scale from the URL, kept exactly as typed: 0.13, 0,13 or 1.375 all work. Values
+   * outside 0.05 to 5 are held at the nearest limit; anything that is not a positive
+   * number is ignored. The parameter name is matched without regard to case.
+   */
+  function scaleFromQuery(name) {
+    for (const [key, raw] of params) {
+      if (key.toLowerCase() !== name) continue;
+      const value = Number(String(raw).trim().replace(",", "."));
+      if (!Number.isFinite(value) || value <= 0) return null;
+      return Math.min(5, Math.max(0.05, value));
+    }
+    return null;
   }
+
+  const scale = scaleFromQuery("scale");
+  if (scale !== null) document.documentElement.style.setProperty("--overlay-scale", String(scale));
+
+  // The banners live outside the views, so ?scale leaves them alone; ?bannerScale sizes them.
+  const bannerScale = scaleFromQuery("bannerscale");
+  if (bannerScale !== null) document.documentElement.style.setProperty("--banner-scale", String(bannerScale));
 
   let effects = { enabled: true, celebrateGoals: true, celebrateContributions: true, celebrationSeconds: 6 };
   let firstRender = true;

@@ -1,6 +1,6 @@
 {
   "name": "catopanda-subathon",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "private": true,
   "type": "module",
   "description": "Cronômetro, metas e overlays de subathon para OSC Flow Studio 0.5.x",

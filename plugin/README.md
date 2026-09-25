@@ -1,4 +1,4 @@
-# CatOPanda Subathon 0.4.7
+# CatOPanda Subathon 0.4.8
 
 The LivePix template now sends an accounting receipt after Register Donate. Update
 LivePix and its dashboard to the recovery-capable build first. Existing flows need

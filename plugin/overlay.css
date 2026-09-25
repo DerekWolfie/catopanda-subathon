@@ -1737,12 +1737,18 @@ body.is-ready {
 
 .fx-on .epic__decor { display: block; }
 
+/* ?bannerScale= sizes the card with its rays and rings; flash, confetti and party stay full screen. */
 .epic__stage {
   position: relative;
   display: grid;
   place-items: center;
   max-width: 100%;
+  transform: scale(var(--banner-scale, 1));
+  transform-origin: center;
 }
+
+[data-banner-position="top"] .epic__stage { transform-origin: center top; }
+[data-banner-position="bottom"] .epic__stage { transform-origin: center bottom; }
 
 /* Card */
 .epic__card {
@@ -1752,7 +1758,8 @@ body.is-ready {
   justify-items: center;
   gap: clamp(4px, 0.55cqw, 12px);
   min-width: min(36cqw, 100%);
-  max-width: min(74cqw, 100%);
+  /* Divided by the banner scale so a large ?bannerScale wraps the title instead of leaving the screen. */
+  max-width: min(74cqw, calc(92cqw / var(--banner-scale, 1)));
   padding: clamp(18px, 2cqw, 40px) clamp(24px, 3.6cqw, 72px) clamp(20px, 2.2cqw, 44px);
   border: 2px solid rgba(255, 255, 255, 0.5);
   border-radius: clamp(18px, 2cqw, 40px);

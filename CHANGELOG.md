@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.4.8 (2026-09-23)
+
+- Size the Alertas banners with `?bannerScale=`. The card scales with its rays and
+  shockwave rings from the anchor that `?banner=` sets, so a top or bottom banner
+  stays at its edge. The flash, confetti and party layers stay full screen.
+  `?scale=` still applies only to the other overlays.
+- Accept precise values in `?scale=` and `?bannerScale=`. Both take any number from
+  0.05 to 5 exactly as typed (`0.13`, `1.375`), with a point or a comma (`0,13`).
+  Values past a limit are held at it instead of being ignored, anything that is not a
+  positive number keeps the default, and the parameter name ignores case. `?scale=`
+  used to accept only 0.5 to 2, so `?scale=0.13` did nothing.
+
 ## 0.4.7 (2026-09-23)
 
 - Give every goal a status after it is reached: Pendente, Em andamento or Concluída.

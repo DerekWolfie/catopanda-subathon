@@ -13,7 +13,7 @@ import { extname, resolve } from "node:path";
 import { createServer } from "node:http";
 import { loadIdLedger } from "./id-ledger.mjs";
 
-const PLUGIN_VERSION = "0.4.7";
+const PLUGIN_VERSION = "0.4.8";
 const PORT_RETRY_MS = 15_000;
 const STATE_KEY = "catopanda-subathon-state-v1";
 const MAX_RECENT_EVENTS = 50;
